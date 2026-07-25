@@ -1,473 +1,197 @@
-# 🎯 AI Virtual Mouse - Hand Gesture Control System
+# AI-GOS V2: Ultimate Gesture Control
 
-A powerful Python-based hand gesture recognition system that enables **touchless control** of your computer using just a webcam. Control your mouse, type on a virtual keyboard, adjust volume, and switch windows—all with hand gestures!
+Run the complete touchless control system with:
 
-## 🌟 Features
-
-### 🖱️ **Mouse Control**
-- Move cursor smoothly with your hand position
-- Click with finger proximity detection
-- Natural, intuitive pointing interface
-
-### ⌨️ **Virtual Keyboard**
-- On-screen QWERTY keyboard (3 rows)
-- Gesture-based key selection and pressing
-- Full alphabet + punctuation + DEL/SPACE keys
-- Real-time typed text display
-
-### 🔊 **Volume Control**
-- Adjust system volume using thumb-to-index finger distance
-- Visual volume bar with percentage display
-- Real-time feedback
-
-### 🔀 **Tab/Window Switching**
-- **Open hand** (all fingers extended) → Next window/tab (Alt+Tab)
-- **Closed hand** (all fingers down) → Previous window/tab (Alt+Shift+Tab)
-- Smart debouncing to prevent rapid switches
-
-### 📊 **Real-Time Feedback**
-- Live FPS counter
-- Mode indicators (color-coded)
-- Visual gesture recognition feedback
-- On-screen instructions
-
----
-
-## 🚀 Getting Started
-
-### Prerequisites
-- Python 3.7+ 
-- Webcam/Camera
-- Windows OS (for audio control features)
-
-### Installation
-
-1. **Clone or download the project:**
-```bash
-git clone <repository-url>
-cd AI-VIRTUAL-MOUSE
-```
-
-2. **Create a virtual environment (recommended):**
-```bash
-python -m venv .venv
-.venv\Scripts\activate
-```
-
-3. **Install dependencies:**
 ```bash
 pip install opencv-python mediapipe numpy autopy pyautogui pycaw comtypes
-```
-
-### Quick Start
-
-**Run the ultimate all-in-one application:**
-```bash
 python ultimate_gesture_control.py
 ```
 
-**Or choose a specific app:**
-```bash
-python combined_gesture_control.py      # Mouse + Volume + Tab switching
-python virtual_keyboard.py              # Keyboard only
-python AI_virtual_mouse.py              # Mouse only
-python HandTracking.py                  # Volume only
-```
+`ultimate_gesture_control.py` runs mouse, click, volume, tabs, adaptive
+keyboard, multi-hand controls, profiles, confidence analytics, and optional
+voice input in one camera window. Voice input also needs `SpeechRecognition`
+and `PyAudio`; toggle it with `V`.
 
----
+## Primary-hand controls
 
-## 🎮 Quick Reference - Run & Use
+Mouse gestures follow finger count, like the buttons and wheel on a physical
+mouse:
 
-### Choose Your Use Case
+| Gesture | Action |
+|---|---|
+| Index finger only | Move mouse |
+| Index + middle close | Left click |
+| Index + middle + ring | Right click |
+| Index + middle + ring + pinky (thumb down) | Open/close AI-GOS keyboard |
+| Open hand (all 5) | Next tab/window |
+| Closed hand (fist) | Previous tab/window |
+| Thumb + index | Volume |
+| Index + pinky ("rock on"), move hand up/down | Scroll |
+| `K` command | Also opens/closes AI-GOS keyboard mode |
 
-| Use Case | Command | Gesture | How It Works |
-|----------|---------|---------|--------------|
-| **All Features** | `python ultimate_gesture_control.py` | All below | Complete control: Mouse + Keyboard + Volume + Tab switching |
-| **Move Cursor** | `python ultimate_gesture_control.py` | 👉 Index only | Move your index finger to control cursor smoothly |
-| **Click Mouse** | `python ultimate_gesture_control.py` | 👉➜👆 Index+Middle close | Bring index & middle fingers together (< 40px) to click |
-| **Type Text** | `python ultimate_gesture_control.py` | ✋ Middle only | Show middle finger alone to activate keyboard, select & press keys |
-| **Control Volume** | `python ultimate_gesture_control.py` | 👍🤘 Thumb+Index | Move thumb & index apart/together to increase/decrease volume |
-| **Next Tab** | `python ultimate_gesture_control.py` | ✋ Open Hand | All 5 fingers extended = Alt+Tab (next window) |
-| **Prev Tab** | `python ultimate_gesture_control.py` | ✊ Closed Hand | All fingers down/closed = Alt+Shift+Tab (previous window) |
-| **Mouse Only** | `python AI_virtual_mouse.py` | 👉 / 👉➜👆 | Move cursor / Click only |
-| **Volume Only** | `python HandTracking.py` | 👍🤘 | Control volume only |
-| **Keyboard Only** | `python virtual_keyboard.py` | 👉 / 👆 | Type on virtual keyboard only |
-| **Mouse + Volume** | `python combined_gesture_control.py` | All above except Keyboard | Mouse, click, volume, & tab switching |
+The primary hand retains the original controls. Advanced actions use the
+second hand to avoid gesture conflicts. Press `H` when both hands are visible
+to swap the primary role, so either hand can operate mouse, volume, and
+keyboard controls.
 
-### Keyboard Mode - Step by Step
+## AI-GOS keyboard
 
-| Step | Gesture | Result | Visual |
-|------|---------|--------|--------|
-| 1️⃣ | Show **middle finger only** | Keyboard activates | Cyan keyboard appears |
-| 2️⃣ | Move middle finger over letters | Keys highlight | Cyan highlight on key |
-| 3️⃣ | Bring **index finger close** (< 35px) | Letter types | Green highlight + text appears |
-| 4️⃣ | Repeat steps 2-3 | Build words | Text grows in display box |
-| 5️⃣ | Press **DEL** key | Delete last letter | Text shortened |
-| 6️⃣ | Press **SPACE** key | Add space | Space added between words |
-| 7️⃣ | Press keyboard 'c' key | Clear all | All text deleted |
+Show four fingers (index + middle + ring + pinky, thumb down) or press `K` to
+open keyboard mode; it never opens merely because both hands or three fingers
+are visible. Then hover the index over a key and pinch thumb-to-index to
+type. Dwell typing, word predictions, adaptive key sizes, and swipe shortcuts
+are included.
 
----
+| Keyboard gesture | Action |
+|---|---|
+| Swipe left/right | Delete/space |
+| Swipe up/down | Enter/clear |
+| Pinch a predicted word | Insert the complete word |
 
-## 🎮 Gesture Controls
+Text stays in the AI-GOS panel and is not inserted automatically in another
+application.
 
-### Ultimate Gesture Control (`ultimate_gesture_control.py`) - Master Table
+## Advanced second-hand controls
 
-| Gesture | Mode | Action | Visual | Use This For |
-|---------|------|--------|--------|--------------|
-| 👉 **Index only** | Mouse Move | Move cursor smoothly | Purple circle | Pointing at screen |
-| 👉➜👆 **Index + Middle close** | Mouse Click | Trigger mouse click | Green circle | Clicking buttons |
-| ✋ **Middle only** | Keyboard | Activate virtual keyboard | Cyan keyboard | Typing text |
-| 👍🤘 **Thumb + Index** | Volume | Adjust system volume | Cyan line + % | Changing audio |
-| ✋ **Open Hand** (5 fingers) | Tab Switch | Next window (Alt+Tab) | Yellow indicator | Switch right in browser |
-| ✊ **Closed Hand** (fingers down) | Tab Switch | Prev window (Alt+Shift+Tab) | Orange indicator | Switch left in browser |
+| Gesture | Action |
+|---|---|
+| Thumb/index pinch hold | Drag; release to drop |
+| Index + middle | Vertical air scroll |
+| Thumb + index pinch, then move vertically | Scroll |
+| Three fingers, rotating around primary index | Zoom |
+| Four fingers | Maximize active window |
+| Open palm | Context shortcut |
 
-### Keyboard Mode Details
+### Pinch-and-move scroll
 
-```
-Step 1: Show only middle finger → Keyboard activates (cyan indicator)
-Step 2: Move middle finger to select keys (cyan highlight)
-Step 3: Bring index finger close to middle (< 35px) → Key press (green)
-Step 4: Typed text appears in display box above keyboard
-Step 5: DEL key → Delete last character
-        SPACE key → Add space
-        'c' key → Clear all text
-```
+1. Keep both hands visible.
+2. Pinch thumb and index finger on the second hand.
+3. Move the pinched hand up or down to scroll.
 
-### Volume Control
+Start moving soon after the pinch. Holding the pinch still for a moment
+continues to start drag/drop; release the pinch to finish either action.
 
-```
-Move thumb and index fingers closer/farther apart to decrease/increase volume
-Visual feedback: Cyan line between fingers + percentage display
-Green circle = Volume at minimum
-```
+## Recognition and dashboard
 
----
+The AI-GOS dashboard recognizes single, two, three, four, and five fingers;
+pinch, grab, swipe, rotation, air tap, air hold, air scroll, pinch scrolling,
+and trained custom poses. It reports confidence, action count, typing
+WPM, profile/context, voice status, and the latest gesture.
 
-## 📁 File Structure
+Confidence is a hand-visibility heuristic, not a trained-model probability.
 
-### Main Applications
+## Settings and personalization
+
+| Key | Action |
+|---|---|
+| `G` | Toggle AI-GOS dashboard/advanced layer |
+| `M` | Cycle General, Browser, Coding, Media contexts |
+| `P` | Cycle Default and Accessible profiles |
+| `T` | Train the currently visible pose as a custom gesture |
+| `V` | Start/stop optional voice capture |
+| `H` | Swap the primary control hand when two hands are visible |
+| `C` | Clear keyboard text |
+| `K` | Open/close AI-GOS keyboard mode |
+| `Esc` | Exit |
+
+Profiles and trained poses are saved to `gesture_profiles.json` when possible.
+The secondary open-palm shortcut shows desktop in General, focuses the address
+bar in Browser, opens the command palette in Coding, and play/pauses in Media.
+
+## Files
 
 | File | Purpose |
-|------|---------|
-| **ultimate_gesture_control.py** | All-in-one: Mouse + Keyboard + Volume + Tab switching ⭐ |
-| **combined_gesture_control.py** | Mouse + Volume + Tab switching |
-| **virtual_keyboard.py** | Standalone virtual keyboard |
-| **AI_virtual_mouse.py** | Virtual mouse control only |
-| **HandTracking.py** | Volume control only |
-| **hand_volume_control.py** | Class-based volume control |
+|---|---|
+| `ultimate_gesture_control.py` | Main all-in-one application |
+| `ai_gos_features.py` | Recognition, profiles, analytics, advanced gestures, voice |
+| `HandTrackingModule.py` | MediaPipe single/multi-hand tracking |
 
-### Core Module
+Windows is required for the pycaw volume control. Use good lighting and test
+desktop automation in a safe window before using it for important work.
 
-| File | Purpose |
-|------|---------|
-| **HandTrackingModule.py** | Core hand detection and landmark tracking engine |
-| **HandTrackingMin.py** | Minimal hand tracking example for debugging |
+## Using a phone as the camera (web HUD only)
 
-### Documentation
+When launched from the `ai-gos-hud` web dashboard (not run standalone), you
+can use a phone's camera instead of the PC's webcam — no app install needed:
 
-| File | Purpose |
-|------|---------|
-| **README.md** | This file - Project documentation |
-| **persona.md** | Detailed project description and specifications |
+1. Start `backend/` (`npm start`) and `ai-gos-hud/` (`npm run dev`) as usual.
+2. In the HUD, click the phone icon next to **Start Engine** to get a QR code.
+3. Scan it with your phone's camera app. Phone and PC must be on the **same
+   Wi-Fi network**.
+4. Your phone will show a certificate warning the first time — tap
+   **Advanced → Proceed**. This is expected: the backend serves HTTPS with a
+   self-signed certificate (required for phone browsers to allow camera
+   access at all), not a sign of a real problem.
+5. Once the phone's page shows "Streaming to AI-GOS", click **Start Engine** —
+   it will automatically prefer the phone's camera over the PC webcam.
 
----
+You can also point `AI_GOS_CAMERA_SOURCE` (an environment variable the
+backend passes through) at an IP-camera stream URL (e.g. the Android "IP
+Webcam" app) or a virtual-webcam device index (e.g. DroidCam/iVCam) instead.
 
-## 🛠️ Configuration
+## Web HUD account (login required)
 
-### Camera Settings
-```python
-wcam, hcam = 640, 480      # Webcam resolution
-frameR = 100               # Frame boundary (pixels)
-smoothening = 7            # Mouse movement smoothing factor
-```
+The web dashboard requires an account — anyone reaching the backend (e.g.
+another device on your Wi-Fi, now that phone-camera pairing opens it up to
+the LAN) can't start the engine, connect a phone camera, or see telemetry
+without logging in first.
 
-### Gesture Sensitivity
-```python
-MOUSE_CLICK_DISTANCE = 40  # px - distance to trigger click
-KEYBOARD_PRESS_DISTANCE = 35  # px - distance to press key
-VOLUME_RANGE = [50, 218]   # px - finger distance range for volume
-```
+- First visit: click **Sign Up** (username, email, password — 8+ characters)
+  to create an account, or **Log In** if you already have one.
+- Accounts are stored locally in `backend/data/users.json`, passwords hashed
+  with bcrypt — nothing is sent anywhere external. Sessions are stored in
+  `backend/data/sessions.json` and last 30 days.
+- There's no "admin" distinction; any account can control the engine and
+  phone camera. This gates out strangers on your network, not different
+  permission levels between people you trust.
+- Logging in sets a session cookie that also authenticates the Socket.io
+  telemetry connection — an expired or missing session gets disconnected and
+  sent back to the login screen automatically.
 
-### Tab Switching
-```python
-hand_state_debounce = 0.5  # seconds - cooldown between switches
-```
+## Live keyboard and voice state
 
----
+Once the engine is running, the telemetry stream includes `keyboard` (`active`,
+`text`, `predictions`, `status`) and `voice` (`enabled`, `text`) — this is what
+drives the HUD's on-screen predictive keyboard and the VOICE status chip.
+Clicking a key or a predicted word in the HUD sends a `TYPE:<key>` or
+`INSERT_PREDICTION:<word>` command that types into the same `AIGOSKeyboard`
+buffer that pinch/dwell gesture typing uses, so gesture typing and clicking
+the on-screen keyboard both work on the same live text.
 
-## 💻 System Requirements
+## Existing standalone applications
 
-| Component | Requirement |
-|-----------|-------------|
-| **OS** | Windows (primary), macOS/Linux (partial support) |
-| **Python** | 3.7 or higher |
-| **Camera** | Any USB webcam or built-in camera |
-| **Lighting** | Good ambient lighting for better hand detection |
-| **RAM** | Minimum 4GB |
-| **CPU** | Intel i5 or equivalent (20-30 FPS) |
+The all-in-one application is the recommended entry point, but the original
+examples remain in this repository and can still be run independently.
 
----
+| Command | Current purpose |
+|---|---|
+| `python AI_virtual_mouse.py` | Original mouse movement and click example |
+| `python combined_gesture_control.py` | Original combined mouse, volume, and tab controller |
+| `python HandTracking.py` | Original hand-volume controller |
+| `python hand_volume_control.py` | Class-based hand-volume controller |
+| `python virtual_keyboard.py` | Standalone legacy virtual keyboard |
+| `python HandTrackingMin.py` | Minimal landmark-tracking/debug example |
 
-## 📦 Dependencies
+## Legacy configuration reference
 
-```
-opencv-python        4.8.0+     # Video capture and image processing
-mediapipe           0.10.0+     # Hand detection and landmarks
-numpy               1.24.0+     # Numerical operations
-autopy              4.0.0+      # Mouse control
-pyautogui           0.9.53+     # Keyboard automation
-pycaw               20230407+   # Windows audio control
-comtypes            1.1.14+     # COM interface for audio
-```
-
----
-
-## 🎯 Usage Examples
-
-### Example 1: Virtual Mouse Control
-```bash
-python ultimate_gesture_control.py
-# Show index finger → Move cursor
-# Show index + middle close → Click
-```
-
-### Example 2: Type a Message
-```bash
-python ultimate_gesture_control.py
-# Show middle finger → Keyboard activates
-# Move middle finger to select letters
-# Bring index close → Type letter
-```
-
-### Example 3: Navigate Browser Tabs
-```bash
-python ultimate_gesture_control.py
-# Open hand (all fingers up) → Next tab
-# Close hand (fingers down) → Previous tab
-```
-
-### Example 4: Adjust Volume
-```bash
-python ultimate_gesture_control.py
-# Show thumb + index → Volume mode
-# Move fingers closer → Volume down
-# Move fingers farther → Volume up
-```
-
----
-
-## 🐛 Troubleshooting
-
-### Issue: "ModuleNotFoundError: No module named 'pyautogui'"
-**Solution:** Install missing package
-```bash
-pip install pyautogui
-```
-
-### Issue: Camera not detected
-**Solution:** 
-- Check camera is connected
-- Try: `python -c "import cv2; print(cv2.VideoCapture(0).isOpened())"`
-- Try different camera index (0, 1, 2, etc.)
-
-### Issue: Hand detection is poor/not working
-**Solution:**
-- Improve lighting conditions
-- Ensure hand is clearly visible in frame
-- Try moving closer/farther from camera
-- Check HandTrackingMin.py to debug
-
-### Issue: Volume control doesn't work
-**Solution:**
-- Only works on Windows
-- Check system audio settings
-- Run with administrator privileges if needed
-
-### Issue: Tab switching not working
-**Solution:**
-- Ensure application has focus
-- Try slower hand gesture (open/close hand more deliberately)
-- Check Alt+Tab works manually
-
-### Issue: Keyboard lag/slow response
-**Solution:**
-- Close other resource-intensive applications
-- Improve lighting
-- Move camera closer
-- Reduce smoothing factor
-
----
-
-## 🚀 All Applications - Quick Launch Guide
-
-### Choose the Right App for Your Needs
-
-| App Name | Command | Features | Best For | Gestures |
-|----------|---------|----------|----------|----------|
-| **Ultimate Gesture Control** ⭐ | `python ultimate_gesture_control.py` | Mouse + Keyboard + Volume + Tab Switching | Everything! Complete control | ✅ All 6 gestures |
-| **Combined Gesture Control** | `python combined_gesture_control.py` | Mouse + Volume + Tab Switching | Power user without keyboard | 4 gestures |
-| **Virtual Keyboard** | `python virtual_keyboard.py` | Keyboard only | Typing documents | 2 gestures |
-| **AI Virtual Mouse** | `python AI_virtual_mouse.py` | Mouse control only | Pointing & clicking | 2 gestures |
-| **Hand Volume Control** | `python HandTracking.py` | Volume control only | Audio adjustment | 1 gesture |
-| **Hand Volume (Class)** | `python hand_volume_control.py` | Volume control only (OOP) | Learning/Reference | 1 gesture |
-
-### Scenario-Based Recommendations
-
-| Scenario | Recommended App | Why |
-|----------|-----------------|-----|
-| "I want complete control" | `ultimate_gesture_control.py` | All features in one app |
-| "I only need mouse control" | `AI_virtual_mouse.py` | Lightweight, focused |
-| "I want to type documents" | `ultimate_gesture_control.py` + keyboard | Full keyboard mode |
-| "I'm watching videos" | `combined_gesture_control.py` | Mouse + volume for playback |
-| "I'm coding/developing" | `ultimate_gesture_control.py` | Mouse + keyboard + tab switching |
-| "I'm in a meeting" | `combined_gesture_control.py` | Navigate slides + tab switch |
-| "I'm playing games" | `AI_virtual_mouse.py` | Smooth cursor control |
-
----
-
-## ⚙️ Advanced Configuration
-
-### Edit Hand Detection Parameters
-
-Open `HandTrackingModule.py`:
-```python
-self.mp_hands = mp.solutions.hands
-self.hands = self.mp_hands.Hands(
-    static_image_mode=False,
-    max_num_hands=1,              # Change for multi-hand
-    min_detection_confidence=0.5,  # Adjust detection threshold
-    min_tracking_confidence=0.5    # Adjust tracking threshold
-)
-```
-
-### Custom Keyboard Layout
-
-Edit in `ultimate_gesture_control.py`:
-```python
-keyboard_keys = [
-    ['Q', 'W', 'E', 'R', 'T', 'Y', 'U', 'I', 'O', 'P'],
-    ['A', 'S', 'D', 'F', 'G', 'H', 'J', 'K', 'L', 'DEL'],
-    ['Z', 'X', 'C', 'V', 'B', 'N', 'M', '.', ',', 'SPACE']
-]
-```
-
-### Adjust Gesture Distances
+The original all-in-one controls retain their established values:
 
 ```python
-# In ultimate_gesture_control.py or combined_gesture_control.py
-MOUSE_CLICK_DISTANCE = 40      # Lower = more sensitive
-KEYBOARD_PRESS_DISTANCE = 35   # Lower = more sensitive
+wcam, hcam = 640, 480
+frameR = 100
+smoothening = 7
+mouse_click_distance = 40
+volume_distance_range = [50, 218]
+tab_switch_debounce = 0.5
+right_click_cooldown = 0.6
+scroll_sensitivity = 2.2
 ```
 
----
+`HandTrackingModule.py` remains the shared MediaPipe wrapper. Its original
+`find_hands`, `find_position`, `fingersUp`, and `find_Distance` APIs remain
+available, and `find_all_positions` extends it for AI-GOS multi-hand support.
 
-## 📊 Performance
 
-| Metric | Value |
-|--------|-------|
-| **FPS** | 20-30 (depends on hardware) |
-| **Latency** | 100-150ms (hand movement to cursor) |
-| **CPU Usage** | 15-25% (i5 processor) |
-| **Memory** | 200-300MB |
-| **Accuracy** | 95%+ in good lighting |
 
----
 
-## 🎨 Visual Feedback
-
-| Color | Meaning |
-|-------|---------|
-| **Purple** | Mouse mode / Selection |
-| **Green** | Click ready / Key pressed / Volume min |
-| **Cyan** | Keyboard selected / Volume control active |
-| **Yellow** | Open hand (next tab) |
-| **Orange** | Closed hand (previous tab) |
-| **Gray** | Keyboard keys (normal state) |
-
----
-
-## 🚦 Keyboard Layout
-
-```
-┌─────────────────────────────────────────────┐
-│  Q  W  E  R  T  Y  U  I  O  P              │
-│  A  S  D  F  G  H  J  K  L  DEL           │
-│  Z  X  C  V  B  N  M  .  ,  SPACE         │
-└─────────────────────────────────────────────┘
-```
-
----
-
-## 🔮 Future Enhancements
-
-- [ ] Multi-language keyboard layouts (AZERTY, Dvorak, etc.)
-- [ ] Number pad and function keys
-- [ ] Drag and drop support
-- [ ] Right-click gesture detection
-- [ ] Custom gesture training
-- [ ] Settings GUI
-- [ ] macOS/Linux full support
-- [ ] Gesture recording and playback
-- [ ] Configuration file (JSON/YAML)
-- [ ] Hand pose confidence display
-
----
-
-## 📝 License
-
-This project is open source and available under the MIT License.
-
----
-
-## 🤝 Contributing
-
-Contributions are welcome! Feel free to:
-- Report bugs
-- Suggest features
-- Submit pull requests
-- Improve documentation
-
----
-
-## 📞 Support
-
-For issues or questions:
-1. Check the Troubleshooting section above
-2. Review persona.md for detailed specifications
-3. Test with HandTrackingMin.py for debugging
-4. Check GitHub issues
-
----
-
-## 🎉 Quick Tips
-
-1. **Better performance:** Use good lighting and a high-quality webcam
-2. **Smooth mouse:** Increase smoothening factor (currently 7)
-3. **Faster keyboard:** Decrease keyboard press distance threshold
-4. **Stable volume:** Keep thumb and index steady while adjusting
-5. **Reliable tab switching:** Make clear open/close hand gestures
-
----
-
-## 📚 Related Resources
-
-- [MediaPipe Documentation](https://mediapipe.dev/)
-- [OpenCV Documentation](https://docs.opencv.org/)
-- [AutoPy Documentation](https://github.com/mshafer/autopy)
-- [PyAutoGUI Documentation](https://pyautogui.readthedocs.io/)
-
----
-
-## ✨ Special Thanks
-
-Built with:
-- **MediaPipe** - Hand detection and tracking
-- **OpenCV** - Computer vision
-- **AutoPy** - Mouse control
-- **PyAutoGUI** - Keyboard automation
-
----
-
-**Last Updated:** 2026-07-22  
-**Version:** 1.0  
-**Status:** ✅ Production Ready
+to start use------------ .\.venv\Scripts\python.exe .\ultimate_gesture_control.py

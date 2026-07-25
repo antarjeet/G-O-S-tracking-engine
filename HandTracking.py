@@ -37,7 +37,7 @@ while True:
     img = detector.find_hands(img)
     lmList = detector.find_position(img, draw=True)
 
-    if len(lmList) <= 0:
+    if len(lmList) > 0:
         x1, y1 = lmList[4][1], lmList[4][2]
         x2, y2 = lmList[8][1], lmList[8][2]
         cx, cy = (x1 + x2) // 2, (y1 + y2) // 2

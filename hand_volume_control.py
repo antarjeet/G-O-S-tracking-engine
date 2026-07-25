@@ -29,6 +29,9 @@ class HandVolumeControl:
     def control_volume(self):
         while True:
             success, img = self.cap.read()
+            if not success:
+                print("Failed to grab frame")
+                break
             img = self.find_hands(img)
             lmList = self.find_position(img, draw=False)
 

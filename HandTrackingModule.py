@@ -6,12 +6,17 @@ import math
 
 class HandDetector():
 
-    def __init__(self):
+    def __init__(self, max_num_hands=2, detection_confidence=0.5, tracking_confidence=0.5):
 
         self.lmList = None
         self.results = None
         self.mp_hands = mp.solutions.hands
-        self.hands = self.mp_hands.Hands()
+        self.hands = self.mp_hands.Hands(
+            static_image_mode=False,
+            max_num_hands=max_num_hands,
+            min_detection_confidence=detection_confidence,
+            min_tracking_confidence=tracking_confidence,
+        )
         self.mp_draw = mp.solutions.drawing_utils
 
         self.tipIds = [4, 8, 12, 16, 20]
@@ -58,6 +63,27 @@ class HandDetector():
 
         return self.lmList, bbox
 
+    def find_all_positions(self, img, draw=False):
+        """Return landmarks for every tracked hand without changing legacy state.
+
+        Existing applications continue to use :meth:`find_position` and the
+        first hand.  AI-GOS uses this method to make the second hand available
+        as a non-conflicting gesture controller.
+        """
+        all_hands = []
+        if not self.results.multi_hand_landmarks:
+            return all_hands
+        h, w, _ = img.shape
+        for hand_landmarks in self.results.multi_hand_landmarks:
+            landmarks = []
+            for landmark_id, landmark in enumerate(hand_landmarks.landmark):
+                cx, cy = int(landmark.x * w), int(landmark.y * h)
+                landmarks.append([landmark_id, cx, cy])
+                if draw:
+                    cv2.circle(img, (cx, cy), 5, (0, 255, 255), cv2.FILLED)
+            all_hands.append(landmarks)
+        return all_hands
+
     def fingersUp(self):
 
         fingers = []
@@ -99,20 +125,20 @@ def main():
     p_time = 0
     while True:
         success, img = cap.read()
+        if not success:
+            print("failed to grab frame")
+            break
+
         img = detector.find_hands(img)
-        lmList = detector.find_position(img)
-        if len(lmList) == 0:
+        lmList, bbox = detector.find_position(img)
+        if len(lmList) != 0:
             print(lmList[4])
         c_time = time.time()
-        fps = 1 / (c_time - p_time)
+        fps = 1 / (c_time - p_time) if (c_time - p_time) > 0 else 0
         p_time = c_time
 
         cv2.putText(img, str(int(fps)), (10, 70), cv2.FONT_HERSHEY_PLAIN, 2,
                     (255, 0, 255), 3)
-
-        if not success:
-            print("failed to grab frame")
-            break
 
         cv2.imshow("Image", img)
 
@@ -124,7 +150,7 @@ def main():
 
     cap.release()
 
-    cap.distroyAllWindowa()
+    cv2.destroyAllWindows()
 
 
 if __name__ == "__main__":
