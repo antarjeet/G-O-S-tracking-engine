@@ -6,7 +6,8 @@ import math
 
 class HandDetector():
 
-    def __init__(self, max_num_hands=2, detection_confidence=0.5, tracking_confidence=0.5):
+    def __init__(self, max_num_hands=2, detection_confidence=0.5, tracking_confidence=0.5,
+                 model_complexity=1):
 
         self.lmList = None
         self.results = None
@@ -16,6 +17,11 @@ class HandDetector():
             max_num_hands=max_num_hands,
             min_detection_confidence=detection_confidence,
             min_tracking_confidence=tracking_confidence,
+            # 0 = the "lite" landmark model: notably faster CPU inference per
+            # frame at a small accuracy cost, which is what actually gates
+            # real-time FPS here (camera capture and JPEG streaming are cheap
+            # by comparison).
+            model_complexity=model_complexity,
         )
         self.mp_draw = mp.solutions.drawing_utils
 
@@ -30,8 +36,12 @@ class HandDetector():
         if self.results.multi_hand_landmarks:
             for hand_landmarks in self.results.multi_hand_landmarks:
                 if draw:
-                    self.mp_draw.draw_landmarks(img, hand_landmarks,
-                                                self.mp_hands.HAND_CONNECTIONS)
+                    # No connections passed => no skeleton lines, just the
+                    # landmark points themselves, drawn in solid white.
+                    self.mp_draw.draw_landmarks(
+                        img, hand_landmarks, connections=None,
+                        landmark_drawing_spec=self.mp_draw.DrawingSpec(
+                            color=(255, 255, 255), thickness=2, circle_radius=4))
         return img
 
     def find_position(self, img, handno=0, draw=True):
@@ -51,15 +61,11 @@ class HandDetector():
 
                 self.lmList.append([id, cx, cy])
                 if draw:
-                    cv2.circle(img, (cx, cy), 7, (255, 0, 255), cv2.FILLED)
+                    cv2.circle(img, (cx, cy), 7, (255, 255, 255), cv2.FILLED)
 
             xmin, xmax = min(xList), max(xList)
             ymin, ymax = min(yList), max(yList)
             bbox = xmax, ymin, xmax, ymax
-
-            if draw:
-                cv2.rectangle(img, (xmin - 20, ymin - 20), (xmax + 20, ymax + 20),
-                              (0, 255, 0), 2)
 
         return self.lmList, bbox
 

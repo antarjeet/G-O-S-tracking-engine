@@ -7,11 +7,9 @@ work exactly as before.
 
 import json
 import math
-import threading
 import time
 from pathlib import Path
 
-import cv2
 import pyautogui
 
 
@@ -46,10 +44,6 @@ class AdvancedGestureEngine:
         self.motion_history = []
         self.hold_started = None
         self.recognized = []
-        self.voice_enabled = False
-        self.voice_text = ""
-        self._voice_thread = None
-        self._voice_stop = threading.Event()
 
     @property
     def context(self):
@@ -181,43 +175,6 @@ class AdvancedGestureEngine:
         self.recognized = labels
         return labels
 
-    def toggle_voice(self):
-        if self.voice_enabled:
-            self.voice_enabled = False
-            self._voice_stop.set()
-            self.status = "Voice input stopped"
-            return
-        self.voice_enabled = True
-        self._voice_stop.clear()
-        self._voice_thread = threading.Thread(target=self._voice_loop, daemon=True)
-        self._voice_thread.start()
-        self.status = "Listening for voice input..."
-
-    def _voice_loop(self):
-        try:
-            import speech_recognition as sr
-        except ImportError:
-            self.voice_enabled = False
-            self.status = "Install SpeechRecognition + PyAudio to use voice input"
-            return
-        recognizer = sr.Recognizer()
-        try:
-            with sr.Microphone() as source:
-                recognizer.adjust_for_ambient_noise(source, duration=0.4)
-                while not self._voice_stop.is_set():
-                    try:
-                        audio = recognizer.listen(source, timeout=1, phrase_time_limit=5)
-                        self.voice_text = recognizer.recognize_google(audio)
-                        self.status = "Voice captured: " + self.voice_text[:32]
-                    except (sr.WaitTimeoutError, sr.UnknownValueError):
-                        continue
-                    except sr.RequestError:
-                        self.status = "Voice service unavailable"
-                        break
-        except OSError:
-            self.status = "Microphone is unavailable"
-        self.voice_enabled = False
-
     def handle_key(self, key, primary_hand):
         if key == ord("g"):
             self.enabled = not self.enabled
@@ -230,8 +187,6 @@ class AdvancedGestureEngine:
             self.status = f"Profile: {self.profile_name}"
         elif key == ord("t"):
             self.train_current_pose(primary_hand)
-        elif key == ord("v"):
-            self.toggle_voice()
 
     def _context_shortcut(self):
         if self.context == "BROWSER":
@@ -344,23 +299,3 @@ class AdvancedGestureEngine:
             self.last_rotation = None
         self.status += f" | confidence {confidence:.0%} | {int((time.perf_counter() - began) * 1000)} ms"
         return confidence
-
-    def draw_dashboard(self, image, keyboard_text, confidence):
-        if not self.enabled:
-            return
-        elapsed_minutes = max((time.time() - self.started_at) / 60, 1 / 60)
-        words = len(keyboard_text.split())
-        wpm = words / elapsed_minutes
-        average = sum(self.confidences) / len(self.confidences) if self.confidences else confidence
-        cv2.rectangle(image, (300, 4), (635, 110), (25, 25, 25), cv2.FILLED)
-        cv2.rectangle(image, (300, 4), (635, 110), (0, 210, 255), 1)
-        lines = (
-            f"AI-GOS | {self.profile_name} | {self.context}",
-            f"confidence: {average:.0%}   gestures: {self.gesture_count}",
-            f"typing: {wpm:.1f} WPM   voice: {'ON' if self.voice_enabled else 'OFF'}",
-            "recognizes: " + (", ".join(self.recognized)[:35] or "waiting"),
-            self.status[:48],
-        )
-        for row, line in enumerate(lines):
-            cv2.putText(image, line, (306, 20 + row * 18), cv2.FONT_HERSHEY_SIMPLEX,
-                        0.38, (230, 230, 230) if row else (0, 220, 255), 1)

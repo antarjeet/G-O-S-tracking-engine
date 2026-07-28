@@ -31,23 +31,25 @@ from pycaw.pycaw import AudioUtilities, IAudioEndpointVolume
 
 import HandTrackingModule as htm
 from ai_gos_features import AdvancedGestureEngine
+from voice_typing import VoiceTypingModule
 
 
 WCAM, HCAM = 640, 480
 FRAME_MARGIN = 100
-SMOOTHING = 7
 PINCH_DISTANCE = 38
 DWELL_SECONDS = 0.65
 ACTION_COOLDOWN = 0.45
 RIGHT_CLICK_COOLDOWN = 0.6
 SCROLL_SENSITIVITY = 2.2
 
-# The web HUD only needs a preview-quality picture; gesture control itself
-# runs off the landmark coordinates, not the pixels. Streaming a smaller,
-# lower-quality JPEG instead of the full 640x480 frame is what keeps the
-# browser feed smooth instead of lagging behind the real hand movement.
-STREAM_W, STREAM_H = 320, 240
-STREAM_JPEG_QUALITY = 50
+# What the web HUD actually displays: the full working-resolution frame
+# (matching WCAM/HCAM below) at a much higher JPEG quality than before.
+# Gesture control itself runs off the landmark coordinates, not these
+# pixels, so this only affects what you see, not tracking accuracy or
+# speed — a local Wi-Fi/loopback Socket.io connection has plenty of
+# headroom for a sharper picture at this size.
+STREAM_W, STREAM_H = 640, 480
+STREAM_JPEG_QUALITY = 85
 
 # When launched by the Node/Express backend (AI_GOS_HEADLESS=1) no OS window
 # is opened. The fully-drawn camera frame is streamed to the web HUD instead,
@@ -115,6 +117,31 @@ class PhoneCameraCapture:
 
     def release(self):
         self._opened = False
+
+
+def _fit_to_size(img, target_w, target_h):
+    """Resize img to exactly (target_w, target_h) without distorting it.
+
+    A phone camera almost never natively streams 4:3 (640x480) — it's
+    commonly 16:9 — so a plain cv2.resize() to our fixed working resolution
+    squashes/stretches the picture (round faces go oval, hands look
+    squeezed). Center-crop to the target aspect ratio first, then resize;
+    the resize now scales both axes by the same factor, so nothing warps.
+    """
+    h, w = img.shape[:2]
+    target_aspect = target_w / target_h
+    src_aspect = w / h
+    if src_aspect > target_aspect:
+        # Source is wider than target: crop the sides.
+        new_w = int(h * target_aspect)
+        x0 = (w - new_w) // 2
+        img = img[:, x0:x0 + new_w]
+    elif src_aspect < target_aspect:
+        # Source is taller than target: crop top/bottom.
+        new_h = int(w / target_aspect)
+        y0 = (h - new_h) // 2
+        img = img[y0:y0 + new_h, :]
+    return cv2.resize(img, (target_w, target_h))
 
 
 def _open_camera():
@@ -242,6 +269,28 @@ class AIGOSKeyboard:
         self._record_word(word)
         self.status = f"Prediction: {word}"
 
+    def insert_text(self, text):
+        """Append a dictated phrase as its own word(s), used by voice input."""
+        text = text.strip()
+        if not text:
+            return
+        if self.text and not self.text.endswith((" ", "\n")):
+            self.text += " "
+        self.text += text + " "
+        words = text.split()
+        if words:
+            self._record_word(words[-1])
+        self.status = f"Voice: {text}"
+
+    def delete_last_word(self):
+        """Remove the last dictated/typed word, used by the voice 'delete' command."""
+        stripped = self.text.rstrip()
+        if " " in stripped:
+            self.text = stripped.rsplit(" ", 1)[0] + " "
+        else:
+            self.text = ""
+        self.status = "Voice: deleted last word"
+
     def update(self, point, pinching, now):
         """Process pointer input and return selected/pressed positions for drawing."""
         self.pointer_history.append((now, point[0], point[1]))
@@ -328,8 +377,21 @@ def main():
     # These settings, gesture tests, mappings and debounce values deliberately
     # match the pre-AI-GOS version.
     wcam, hcam = 640, 480
-    frameR, smoothening = 100, 7
-    cTime = pTime = 0
+    # Lower smoothening = less lag between hand movement and cursor movement
+    # (it's a 1/N low-pass filter on each axis: clocX moves N-th of the way
+    # to the target every frame, so a high N feels "slow to catch up" even
+    # at a good FPS). 7 felt sluggish; 3 tracks much closer to real-time
+    # while still smoothing out per-frame jitter.
+    frameR, smoothening = 100, 3
+    # fps is averaged over a rolling window rather than recomputed from a
+    # single 1/dt every frame: instantaneous per-frame timing is noisy (OS
+    # scheduling jitter, one slightly-early iteration) and can momentarily
+    # spike to nonsense values like "1400 FPS" even though the sustained
+    # rate is nothing like that. Averaging over ~0.5s of real frames gives a
+    # steady, physically meaningful number instead.
+    fps = 0.0
+    fps_window_start = time.time()
+    fps_window_count = 0
     plocX = plocY = clocX = clocY = 0
     pyautogui.FAILSAFE = False
     wScr, hScr = pyautogui.size()
@@ -338,7 +400,7 @@ def main():
 
     cap.set(3, wcam)
     cap.set(4, hcam)
-    cap.set(cv2.CAP_PROP_FPS, 30)
+    cap.set(cv2.CAP_PROP_FPS, 60)
     # Some DirectShow drivers buffer several frames internally, which makes
     # cap.read() return stale frames and the whole pipeline feel laggy.
     # Not all backends support this property; ignore failures.
@@ -346,16 +408,19 @@ def main():
         cap.set(cv2.CAP_PROP_BUFFERSIZE, 1)
     except Exception:
         pass
-    detector = htm.HandDetector()
+    detector = htm.HandDetector(model_complexity=0)
     devices = AudioUtilities.GetSpeakers()
     interface = devices.Activate(IAudioEndpointVolume._iid_, CLSCTX_ALL, None)
     volume = interface.QueryInterface(IAudioEndpointVolume)
     minVol, maxVol = volume.GetVolumeRange()[:2]
-    volbar = 400
     volper = 0
     keyboard = AIGOSKeyboard()
     keyboard_active = False
     ai_gos = AdvancedGestureEngine()
+    # Dictates speech straight into `keyboard`'s text buffer on its own
+    # background thread — see voice_typing.py.
+    voice_typing = VoiceTypingModule(keyboard)
+
     active_hand_index = 0
     last_hand_state = None
     hand_state_change_time = 0
@@ -371,7 +436,12 @@ def main():
     def apply_command(cmd, current_lmlist, current_all_hands):
         """Web-HUD equivalent of the cv2-window key shortcuts below."""
         nonlocal keyboard_active, active_hand_index
-        cmd = cmd.strip().upper()
+        # Match commands case-insensitively, but keep the original casing of
+        # anything after a ":" — TYPE:/INSERT_PREDICTION:/VOICE_PHRASE: all
+        # carry a payload (a character, a word, a dictated phrase) that
+        # shouldn't be forced to uppercase.
+        raw = cmd.strip()
+        cmd = raw.upper()
         if cmd == "TOGGLE_KEYBOARD":
             keyboard_active = not keyboard_active
             ai_gos.status = "AI-GOS keyboard opened" if keyboard_active else "AI-GOS keyboard closed"
@@ -392,14 +462,25 @@ def main():
         elif cmd == "TRAIN":
             ai_gos.handle_key(ord('t'), current_lmlist if len(current_lmlist) else [])
         elif cmd == "TOGGLE_VOICE":
-            ai_gos.handle_key(ord('v'), current_lmlist if len(current_lmlist) else [])
+            voice_typing.toggle()
         elif cmd.startswith("TYPE:"):
             # Lets the web HUD's on-screen keyboard type into the same
             # AIGOSKeyboard buffer that pinch/dwell gesture typing uses,
             # independent of whether gesture keyboard mode is toggled on.
-            keyboard.apply(cmd[len("TYPE:"):])
+            keyboard.apply(raw[len("TYPE:"):])
         elif cmd.startswith("INSERT_PREDICTION:"):
-            keyboard.insert_prediction(cmd[len("INSERT_PREDICTION:"):])
+            keyboard.insert_prediction(raw[len("INSERT_PREDICTION:"):])
+        elif cmd.startswith("VOICE_PHRASE:"):
+            # A phrase recognized by the *browser's* microphone (Web Speech
+            # API in the web HUD — see gos/index.html), as opposed to
+            # voice_typing.py's own PC-mic listening thread. Letting the web
+            # HUD request mic permission and recognize speech client-side
+            # means voice typing works from whatever device has the
+            # dashboard open (a phone, a laptop) even if that isn't the PC
+            # actually running this engine — same idea as phone-camera
+            # pairing. Routed through the same handle_phrase() so "space"/
+            # "clear"/"delete" behave identically either way.
+            voice_typing.handle_phrase(raw[len("VOICE_PHRASE:"):])
 
     while True:
         success, img = cap.read()
@@ -410,9 +491,10 @@ def main():
         # deliver frames at a different resolution than wcam/hcam, which the
         # mouse-move mapping and telemetry normalization below both assume.
         # Force it back to the expected size so gesture math stays correct
-        # regardless of the actual source resolution.
+        # regardless of the actual source resolution — center-crop to the
+        # right aspect ratio first so this doesn't stretch/distort the image.
         if img.shape[1] != wcam or img.shape[0] != hcam:
-            img = cv2.resize(img, (wcam, hcam))
+            img = _fit_to_size(img, wcam, hcam)
         img = cv2.flip(img, 1)
         img = detector.find_hands(img)
         lmList, bbox = detector.find_position(img)
@@ -472,7 +554,6 @@ def main():
             # === Robust OS Mouse Movement ===
             elif fingers[1] == 1 and fingers[2] == 0 and fingers[3] == 0 and fingers[4] == 0:
                 current_mode = "MOUSE MOVE"
-                cv2.rectangle(img, (frameR, frameR), (wcam-frameR, hcam-frameR), (255, 0, 255), 2)
                 x3 = np.interp(x1, (frameR, wcam-frameR), (0, wScr))
                 y3 = np.interp(y1, (frameR, hcam-frameR), (0, hScr))
                 clocX = plocX + (x3 - plocX) / smoothening
@@ -486,17 +567,14 @@ def main():
                 except Exception:
                     pass
 
-                cv2.circle(img, (x1, y1), 15, (255, 0, 255), cv2.FILLED)
                 plocX, plocY = clocX, clocY
-                cv2.putText(img, "MODE: MOUSE MOVE", (10, 25), cv2.FONT_HERSHEY_PLAIN, 2, (255, 0, 255), 2)
 
             # === Robust OS Mouse Click ===
             elif fingers[1] == 1 and fingers[2] == 1 and fingers[3] == 0 and fingers[4] == 0:
                 current_mode = "MOUSE CLICK"
-                length, img, lineinfo = detector.find_Distance(8, 12, img)
+                length, img, lineinfo = detector.find_Distance(8, 12, img, draw=False)
                 cv2.putText(img, "MODE: MOUSE CLICK", (10, 25), cv2.FONT_HERSHEY_PLAIN, 2, (0, 255, 0), 2)
                 if length < 40:
-                    cv2.circle(img, (lineinfo[4], lineinfo[5]), 15, (0, 255, 0), cv2.FILLED)
                     try:
                         pyautogui.click()
                     except Exception:
@@ -509,7 +587,6 @@ def main():
                 # A cooldown (rather than the left-click's per-frame pinch
                 # check) keeps a held pose from spamming the context menu.
                 if now - last_right_click_time > RIGHT_CLICK_COOLDOWN:
-                    cv2.circle(img, (x1, y1), 15, (0, 140, 255), cv2.FILLED)
                     try:
                         pyautogui.click(button='right')
                         last_right_click_time = now
@@ -526,7 +603,6 @@ def main():
             # check instead, regardless of thumb state.
             elif fingers[1] == 1 and fingers[4] == 1 and fingers[2] == 0 and fingers[3] == 0:
                 current_mode = "SCROLL"
-                cv2.circle(img, (x1, y1), 12, (0, 220, 180), cv2.FILLED)
                 cv2.putText(img, "MODE: SCROLL", (10, 25), cv2.FONT_HERSHEY_PLAIN, 2, (0, 220, 180), 2)
                 if last_scroll_y is not None:
                     delta = y1 - last_scroll_y
@@ -541,19 +617,9 @@ def main():
             elif fingers[0] == 1 and fingers[1] == 1:
                 current_mode = "VOLUME CONTROL"
                 length = math.hypot(x2 - x_thumb, y2 - y_thumb)
-                cv2.circle(img, (x_thumb, y_thumb), 15, (0, 255, 255), cv2.FILLED)
-                cv2.circle(img, (x1, y1), 15, (0, 255, 255), cv2.FILLED)
-                cv2.line(img, (x_thumb, y_thumb), (x1, y1), (0, 255, 255), 3)
                 vol = np.interp(length, [50, 218], [minVol, maxVol])
-                volbar = np.interp(length, [50, 218], [400, 150])
                 volper = np.interp(length, [50, 218], [0, 100])
                 volume.SetMasterVolumeLevel(vol, None)
-                if length < 50:
-                    cv2.circle(img, (int((x_thumb + x1) / 2), int((y_thumb + y1) / 2)), 15, (0, 255, 0), cv2.FILLED)
-                cv2.rectangle(img, (50, 150), (85, 400), (0, 255, 255), 3)
-                cv2.rectangle(img, (50, int(volbar)), (85, 400), (0, 255, 255), cv2.FILLED)
-                cv2.putText(img, f'{int(volper)} %', (40, 450), cv2.FONT_HERSHEY_PLAIN, 2, (0, 255, 255), 3)
-                cv2.putText(img, f"MODE: VOLUME CONTROL | {int(volper)}%", (10, 25), cv2.FONT_HERSHEY_PLAIN, 2, (0, 255, 255), 2)
             else:
                 current_mode = "IDLE"
                 cv2.putText(img, "MODE: IDLE - Show a gesture", (10, 25), cv2.FONT_HERSHEY_PLAIN, 2, (200, 200, 200), 2)
@@ -563,13 +629,11 @@ def main():
 
             # === Original tab/window switching ===
             if sum(fingers) == 5:
-                cv2.putText(img, "HAND: OPEN - Next Tab (Alt+Tab)", (10, 85), cv2.FONT_HERSHEY_PLAIN, 1.5, (255, 255, 0), 2)
                 if last_hand_state != "OPEN" and (now - hand_state_change_time) > hand_state_debounce:
                     pyautogui.hotkey('alt', 'tab')
                     hand_state_change_time = now
                     last_hand_state = "OPEN"
             elif sum(fingers) == 0:
-                cv2.putText(img, "HAND: CLOSED - Previous Tab (Alt+Shift+Tab)", (10, 85), cv2.FONT_HERSHEY_PLAIN, 1.5, (255, 100, 0), 2)
                 if last_hand_state != "CLOSED" and (now - hand_state_change_time) > hand_state_debounce:
                     pyautogui.hotkey('alt', 'shift', 'tab')
                     hand_state_change_time = now
@@ -578,17 +642,21 @@ def main():
             # AI-GOS only consumes the second hand, preserving the legacy
             # first-hand gesture paths above.
             ai_confidence = ai_gos.process(img, ordered_hands, keyboard.text, now)
+        else:
+            current_mode = "IDLE"
+            text = "Show hand to camera"
+            size = cv2.getTextSize(text, cv2.FONT_HERSHEY_PLAIN, 2, 2)[0]
+            cv2.putText(img, text, ((wcam - size[0]) // 2, hcam // 2), cv2.FONT_HERSHEY_PLAIN,
+                        2, (200, 200, 200), 2)
 
-        cTime = time.time()
-        fps = 1 / (cTime - pTime) if (cTime - pTime) > 0 else 0
-        pTime = cTime
+        fps_window_count += 1
+        fps_elapsed = time.time() - fps_window_start
+        if fps_elapsed >= 0.5:
+            fps = fps_window_count / fps_elapsed
+            fps_window_count = 0
+            fps_window_start = time.time()
 
-        cv2.putText(img, f"FPS: {int(fps)}", (10, 55), cv2.FONT_HERSHEY_PLAIN, 2, (255, 0, 0), 3)
-        ai_gos.draw_dashboard(img, keyboard.text, ai_confidence)
-        hand_label = f"Primary hand: {active_hand_index + 1} (H swaps)"
-        cv2.putText(img, hand_label, (10, 78), cv2.FONT_HERSHEY_PLAIN, 1.2, (0, 255, 255), 1)
-        keyboard_label = "Keyboard: ON (K or 4 fingers closes)" if keyboard_active else "Keyboard: OFF (K or 4 fingers opens)"
-        cv2.putText(img, keyboard_label, (10, 94), cv2.FONT_HERSHEY_PLAIN, 1.1, (0, 255, 255), 1)
+        cv2.putText(img, f"{int(fps)} FPS", (10, 20), cv2.FONT_HERSHEY_PLAIN, 1, (200, 200, 200), 1)
         cv2.putText(img, "1:Move 2:Click 3:R-Click 4:Keyboard 5:NextTab Fist:PrevTab Thumb+Index:Volume Index+Pinky:Scroll | H:Swap G:AI-GOS ESC:Exit", (2, hcam - 5), cv2.FONT_HERSHEY_PLAIN, 0.48, (200, 200, 200), 1)
 
         # === Real-time JSON Telemetry Stream to Express Node.js Server ===
@@ -615,6 +683,11 @@ def main():
                 except Exception:
                     frame_b64 = None
 
+            # Surface the on-screen keyboard overlay automatically once voice
+            # typing is listening, the same way opening it by gesture does.
+            if voice_typing.enabled:
+                keyboard_active = True
+
             telemetry_payload = {
                 "source": "REALTIME_ULTIMATE_GESTURE_ENGINE",
                 "fps": round(fps, 1),
@@ -635,8 +708,8 @@ def main():
                     "status": keyboard.status,
                 },
                 "voice": {
-                    "enabled": ai_gos.voice_enabled,
-                    "text": ai_gos.voice_text,
+                    "enabled": voice_typing.enabled,
+                    "text": voice_typing.last_text,
                 },
             }
             sys.stdout.write(json.dumps(telemetry_payload) + "\n")
@@ -666,6 +739,8 @@ def main():
                     ai_gos.status = f"Primary control switched to hand {active_hand_index + 1}"
                 else:
                     ai_gos.status = "Show both hands to swap primary control"
+            elif key % 256 == ord('v'):
+                voice_typing.toggle()
             else:
                 ai_gos.handle_key(key % 256, lmList if len(lmList) else [])
         except Exception:
