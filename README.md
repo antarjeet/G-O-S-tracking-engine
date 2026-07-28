@@ -111,10 +111,12 @@ desktop automation in a safe window before using it for important work.
 
 ## Using a phone as the camera (web HUD only)
 
-When launched from the `ai-gos-hud` web dashboard (not run standalone), you
+When launched from the `gos` web dashboard (not run standalone), you
 can use a phone's camera instead of the PC's webcam — no app install needed:
 
-1. Start `backend/` (`npm start`) and `ai-gos-hud/` (`npm run dev`) as usual.
+1. Start the backend from `../gos/backend` (`npm start`) — it serves the
+   `gos` frontend (`index.html`) itself on the same origin, no separate dev
+   server needed.
 2. In the HUD, click the phone icon next to **Start Engine** to get a QR code.
 3. Scan it with your phone's camera app. Phone and PC must be on the **same
    Wi-Fi network**.
@@ -138,9 +140,9 @@ without logging in first.
 
 - First visit: click **Sign Up** (username, email, password — 8+ characters)
   to create an account, or **Log In** if you already have one.
-- Accounts are stored locally in `backend/data/users.json`, passwords hashed
-  with bcrypt — nothing is sent anywhere external. Sessions are stored in
-  `backend/data/sessions.json` and last 30 days.
+- Accounts are stored locally in `../gos/backend/data/users.json`, passwords
+  hashed with bcrypt — nothing is sent anywhere external. Sessions are stored
+  in `../gos/backend/data/sessions.json` and last 30 days.
 - There's no "admin" distinction; any account can control the engine and
   phone camera. This gates out strangers on your network, not different
   permission levels between people you trust.
@@ -192,6 +194,8 @@ scroll_sensitivity = 2.2
 available, and `find_all_positions` extends it for AI-GOS multi-hand support.
 
 
+## Related repositories
 
-
-to start use------------ .\.venv\Scripts\python.exe .\ultimate_gesture_control.py
+The `gos` web dashboard (frontend + backend) that can drive this engine over
+the phone-camera/web-HUD flow described above lives in a separate repo:
+[G-O-S-tracking](https://github.com/antarjeet/G-O-S-tracking).
