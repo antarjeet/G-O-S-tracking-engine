@@ -240,17 +240,41 @@ class AIGOSKeyboard:
         if word:
             self.frequency[word.upper()] = self.frequency.get(word.upper(), 0) + 1
 
+    @staticmethod
+    def _os_write(text):
+        """Send real keystrokes to whichever window/field actually has OS
+        focus — the same field the AI-controlled cursor just clicked into —
+        instead of only updating this class's own display buffer. Wrapped
+        because pyautogui can choke on a handful of exotic characters (e.g.
+        certain emoji), and that shouldn't take down the whole gesture loop."""
+        try:
+            pyautogui.write(text)
+        except Exception:
+            pass
+
+    @staticmethod
+    def _os_press(key, presses=1):
+        if presses <= 0:
+            return
+        try:
+            pyautogui.press(key, presses=presses)
+        except Exception:
+            pass
+
     def apply(self, key):
         if not key:
             return
         if key == "DEL":
             self.text = self.text[:-1]
+            self._os_press("backspace")
         elif key == "SPACE":
             self._record_word(self.text.rsplit(" ", 1)[-1])
             self.text += " "
+            self._os_press("space")
         elif key == "ENTER":
             self._record_word(self.text.rsplit(" ", 1)[-1])
             self.text += "\n"
+            self._os_press("enter")
         elif key == "CLEAR":
             self.text = ""
         elif key == "EMOJI":
@@ -260,6 +284,7 @@ class AIGOSKeyboard:
         else:
             self.text += key
             self.frequency[key] = self.frequency.get(key, 0) + 1
+            self._os_write(key.lower())
         self.status = f"Inserted: {key}"
 
     def insert_prediction(self, word):
@@ -268,28 +293,38 @@ class AIGOSKeyboard:
         self.text += word + " "
         self._record_word(word)
         self.status = f"Prediction: {word}"
+        # The prefix's characters were already sent to the OS field one
+        # keystroke at a time as they were typed — replace them there too
+        # before writing the full predicted word.
+        self._os_press("backspace", presses=len(prefix))
+        self._os_write(word.lower() + " ")
 
     def insert_text(self, text):
         """Append a dictated phrase as its own word(s), used by voice input."""
         text = text.strip()
         if not text:
             return
-        if self.text and not self.text.endswith((" ", "\n")):
+        needs_lead_space = bool(self.text) and not self.text.endswith((" ", "\n"))
+        if needs_lead_space:
             self.text += " "
         self.text += text + " "
         words = text.split()
         if words:
             self._record_word(words[-1])
         self.status = f"Voice: {text}"
+        self._os_write((" " if needs_lead_space else "") + text + " ")
 
     def delete_last_word(self):
         """Remove the last dictated/typed word, used by the voice 'delete' command."""
         stripped = self.text.rstrip()
         if " " in stripped:
-            self.text = stripped.rsplit(" ", 1)[0] + " "
+            new_text = stripped.rsplit(" ", 1)[0] + " "
         else:
-            self.text = ""
+            new_text = ""
+        removed = len(self.text) - len(new_text)
+        self.text = new_text
         self.status = "Voice: deleted last word"
+        self._os_press("backspace", presses=removed)
 
     def update(self, point, pinching, now):
         """Process pointer input and return selected/pressed positions for drawing."""
