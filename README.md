@@ -1,4 +1,4 @@
-# AI-GOS V2: Ultimate Gesture Control
+# 🖐️ AI-GOS V2: Ultimate Gesture Control
 
 Run the complete touchless control system with:
 
@@ -13,7 +13,7 @@ camera window. Voice input also needs `SpeechRecognition` and `PyAudio`;
 toggle it with `V`. Text entry is voice-only — there is no on-screen or
 gesture-typed keyboard.
 
-## Primary-hand controls
+## 🖱️ Primary-hand controls
 
 Mouse gestures follow finger count, like the buttons and wheel on a physical
 mouse:
@@ -33,7 +33,7 @@ second hand to avoid gesture conflicts. Press `H` when both hands are visible
 to swap the primary role, so either hand can operate mouse, volume, and
 scroll controls.
 
-## Advanced second-hand controls
+## ✨ Advanced second-hand controls
 
 | Gesture | Action |
 |---|---|
@@ -44,7 +44,7 @@ scroll controls.
 | Four fingers | Maximize active window |
 | Open palm | Context shortcut |
 
-### Pinch-and-move scroll
+### 🤏 Pinch-and-move scroll
 
 1. Keep both hands visible.
 2. Pinch thumb and index finger on the second hand.
@@ -53,7 +53,7 @@ scroll controls.
 Start moving soon after the pinch. Holding the pinch still for a moment
 continues to start drag/drop; release the pinch to finish either action.
 
-## Recognition and dashboard
+## 📊 Recognition and dashboard
 
 The AI-GOS dashboard recognizes single, two, three, four, and five fingers;
 pinch, grab, swipe, rotation, air tap, air hold, air scroll, pinch scrolling,
@@ -62,7 +62,7 @@ WPM, profile/context, voice status, and the latest gesture.
 
 Confidence is a hand-visibility heuristic, not a trained-model probability.
 
-## Settings and personalization
+## ⚙️ Settings and personalization
 
 | Key | Action |
 |---|---|
@@ -80,7 +80,7 @@ Profiles and trained poses are saved to `gesture_profiles.json` when possible.
 The secondary open-palm shortcut shows desktop in General, focuses the address
 bar in Browser, opens the command palette in Coding, and play/pauses in Media.
 
-## Files
+## 📁 Files
 
 | File | Purpose |
 |---|---|
@@ -91,7 +91,7 @@ bar in Browser, opens the command palette in Coding, and play/pauses in Media.
 Windows is required for the pycaw volume control. Use good lighting and test
 desktop automation in a safe window before using it for important work.
 
-## Using a phone as the camera (web HUD only)
+## 📱 Using a phone as the camera (web HUD only)
 
 When launched from the `gos` web dashboard (not run standalone), you
 can use a phone's camera instead of the PC's webcam — no app install needed:
@@ -113,7 +113,7 @@ You can also point `AI_GOS_CAMERA_SOURCE` (an environment variable the
 backend passes through) at an IP-camera stream URL (e.g. the Android "IP
 Webcam" app) or a virtual-webcam device index (e.g. DroidCam/iVCam) instead.
 
-## Web HUD account (login required)
+## 🔐 Web HUD account (login required)
 
 The web dashboard requires an account — anyone reaching the backend (e.g.
 another device on your Wi-Fi, now that phone-camera pairing opens it up to
@@ -132,14 +132,14 @@ without logging in first.
   telemetry connection — an expired or missing session gets disconnected and
   sent back to the login screen automatically.
 
-## Live voice state
+## 🎙️ Live voice state
 
 Once the engine is running, the telemetry stream includes `voice` (`enabled`,
 `text`) — this is what drives the HUD's VOICE status chip. Dictated speech
 types straight into whatever field has OS focus; it isn't buffered or
 displayed in the HUD.
 
-## Existing standalone applications
+## 🗂️ Existing standalone applications
 
 The all-in-one application is the recommended entry point, but the original
 examples remain in this repository and can still be run independently.
@@ -152,7 +152,7 @@ examples remain in this repository and can still be run independently.
 | `python hand_volume_control.py` | Class-based hand-volume controller |
 | `python HandTrackingMin.py` | Minimal landmark-tracking/debug example |
 
-## Legacy configuration reference
+## 🧰 Legacy configuration reference
 
 The original all-in-one controls retain their established values:
 
@@ -172,7 +172,7 @@ scroll_sensitivity = 2.2
 available, and `find_all_positions` extends it for AI-GOS multi-hand support.
 
 
-## Related repositories
+## 🔗 Related repositories
 
 The `gos` web dashboard (frontend + backend) that can drive this engine over
 the phone-camera/web-HUD flow described above lives in a separate repo:
