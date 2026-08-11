@@ -1,13 +1,12 @@
-"""AI-GOS V2: touchless mouse, adaptive keyboard, volume and window controls.
+"""AI-GOS V2: touchless mouse, volume and window controls.
 
 Primary-hand mouse gestures follow finger count: one finger moves the
-cursor, two clicks, three right-clicks, four opens/closes the keyboard, an
-open hand switches to the next tab and a fist to the previous one. Index +
-pinky ("rock on") scrolls, and thumb + index still controls system volume.
+cursor, two clicks, three right-clicks, an open hand switches to the next
+tab and a fist to the previous one. Index + pinky ("rock on") scrolls, and
+thumb + index still controls system volume.
 
-Point with the index finger and pinch thumb-to-index to type while the
-keyboard is open. While typing, swipes provide SPACE/BACKSPACE/ENTER/CLEAR
-shortcuts.
+Text entry is voice-only — see voice_typing.py — dictating straight to
+whatever field has OS focus.
 """
 
 import base64
@@ -32,13 +31,12 @@ from pycaw.pycaw import AudioUtilities, IAudioEndpointVolume
 import HandTrackingModule as htm
 from ai_gos_features import AdvancedGestureEngine
 from voice_typing import VoiceTypingModule
+from screen_understanding import ScreenUnderstanding, OCR_AVAILABLE
+from jarvis import JarvisAssistant
 
 
 WCAM, HCAM = 640, 480
 FRAME_MARGIN = 100
-PINCH_DISTANCE = 38
-DWELL_SECONDS = 0.65
-ACTION_COOLDOWN = 0.45
 RIGHT_CLICK_COOLDOWN = 0.6
 SCROLL_SENSITIVITY = 2.2
 
@@ -157,96 +155,25 @@ def _open_camera():
     return cap
 
 
-class AIGOSKeyboard:
-    """Adaptive on-screen keyboard with pinch, dwell and prediction input."""
+class DictationBuffer:
+    """Tracks voice-dictated text and mirrors it to real OS keystrokes.
 
-    LETTERS = [
-        ["Q", "W", "E", "R", "T", "Y", "U", "I", "O", "P"],
-        ["A", "S", "D", "F", "G", "H", "J", "K", "L", "DEL"],
-        ["Z", "X", "C", "V", "B", "N", "M", ".", ",", "SPACE"],
-    ]
-    EMOJI = [["😀", "😁", "👍", "❤️", "🎉", "😂", "😢", "🙏"],
-             ["YES", "NO", "OK", "DEL", "SPACE", "ABC"]]
-    WORDS = (
-        "THE THIS THAT THANKS THERE THEIR THEY YOU YOUR YES NO GOOD MORNING "
-        "NIGHT LUCK HELLO PLEASE THANK YOU COMPUTER GESTURE CONTROL AI"
-    ).split()
+    There is no on-screen keyboard or gesture-typing UI — voice is the only
+    way to enter text now (see voice_typing.py). This just keeps a running
+    buffer of what's been dictated so "clear"/"delete last word" have
+    something to act on, plus a status string for the HUD's voice panel.
+    """
 
     def __init__(self):
         self.text = ""
-        self.emoji_mode = False
-        self.frequency = {}
-        self.hover_key = None
-        self.hover_started = 0.0
-        self.last_action = 0.0
-        self.last_pinch = False
-        self.pointer_history = []
-        self.dwell_seconds = DWELL_SECONDS
-        self.status = "Pinch to type • hold to dwell-type"
-
-    @property
-    def rows(self):
-        return self.EMOJI if self.emoji_mode else self.LETTERS
-
-    def key_rectangles(self):
-        """Return adaptive key rectangles; frequently typed letters get wider."""
-        rects = []
-        y = 246
-        for row_index, row in enumerate(self.rows):
-            weights = []
-            for key in row:
-                base = 1.0
-                if key in ("SPACE", "DEL"):
-                    base = 1.65
-                if len(key) > 2 and key not in ("SPACE",):
-                    base = 1.25
-                # Adaptive sizing is deliberately bounded so adjacent keys stay usable.
-                base += min(self.frequency.get(key, 0), 6) * 0.06
-                weights.append(base)
-            available = 616 - 3 * (len(row) - 1)
-            x = 12
-            for col, (key, weight) in enumerate(zip(row, weights)):
-                width = int(available * weight / sum(weights))
-                if col == len(row) - 1:
-                    width = 628 - x
-                rects.append((key, row_index, col, x, y, width, 52))
-                x += width + 3
-            y += 58
-        return rects
-
-    def key_at(self, point):
-        px, py = point
-        for key, row, col, x, y, width, height in self.key_rectangles():
-            if x <= px <= x + width and y <= py <= y + height:
-                return key, (row, col)
-        return None, None
-
-    def predictions(self):
-        prefix = self.text.rsplit(" ", 1)[-1].upper()
-        if not prefix:
-            return ["THE", "YOU", "THANKS"]
-        matches = [word for word in self.WORDS if word.startswith(prefix) and word != prefix]
-        return sorted(matches, key=lambda word: (-self.frequency.get(word, 0), word))[:3]
-
-    def prediction_at(self, point):
-        px, py = point
-        for index, word in enumerate(self.predictions()):
-            x = 14 + index * 207
-            if x <= px <= x + 194 and 192 <= py <= 230:
-                return word
-        return None
-
-    def _record_word(self, word):
-        if word:
-            self.frequency[word.upper()] = self.frequency.get(word.upper(), 0) + 1
+        self.status = "Voice dictation idle"
 
     @staticmethod
     def _os_write(text):
         """Send real keystrokes to whichever window/field actually has OS
-        focus — the same field the AI-controlled cursor just clicked into —
-        instead of only updating this class's own display buffer. Wrapped
-        because pyautogui can choke on a handful of exotic characters (e.g.
-        certain emoji), and that shouldn't take down the whole gesture loop."""
+        focus. Wrapped because pyautogui can choke on a handful of exotic
+        characters (e.g. certain emoji), and that shouldn't take down the
+        whole gesture loop."""
         try:
             pyautogui.write(text)
         except Exception:
@@ -262,42 +189,17 @@ class AIGOSKeyboard:
             pass
 
     def apply(self, key):
-        if not key:
-            return
-        if key == "DEL":
-            self.text = self.text[:-1]
-            self._os_press("backspace")
-        elif key == "SPACE":
-            self._record_word(self.text.rsplit(" ", 1)[-1])
+        """Handles the "CLEAR"/"SPACE"/"ENTER" tokens VoiceTypingModule's
+        fixed command words map to (see COMMANDS in voice_typing.py)."""
+        if key == "SPACE":
             self.text += " "
             self._os_press("space")
         elif key == "ENTER":
-            self._record_word(self.text.rsplit(" ", 1)[-1])
             self.text += "\n"
             self._os_press("enter")
         elif key == "CLEAR":
             self.text = ""
-        elif key == "EMOJI":
-            self.emoji_mode = True
-        elif key == "ABC":
-            self.emoji_mode = False
-        else:
-            self.text += key
-            self.frequency[key] = self.frequency.get(key, 0) + 1
-            self._os_write(key.lower())
-        self.status = f"Inserted: {key}"
-
-    def insert_prediction(self, word):
-        prefix = self.text.rsplit(" ", 1)[-1]
-        self.text = self.text[:-len(prefix)] if prefix else self.text
-        self.text += word + " "
-        self._record_word(word)
-        self.status = f"Prediction: {word}"
-        # The prefix's characters were already sent to the OS field one
-        # keystroke at a time as they were typed — replace them there too
-        # before writing the full predicted word.
-        self._os_press("backspace", presses=len(prefix))
-        self._os_write(word.lower() + " ")
+        self.status = f"Voice: {key.lower()}"
 
     def insert_text(self, text):
         """Append a dictated phrase as its own word(s), used by voice input."""
@@ -308,14 +210,11 @@ class AIGOSKeyboard:
         if needs_lead_space:
             self.text += " "
         self.text += text + " "
-        words = text.split()
-        if words:
-            self._record_word(words[-1])
         self.status = f"Voice: {text}"
         self._os_write((" " if needs_lead_space else "") + text + " ")
 
     def delete_last_word(self):
-        """Remove the last dictated/typed word, used by the voice 'delete' command."""
+        """Remove the last dictated word, used by the voice 'delete' command."""
         stripped = self.text.rstrip()
         if " " in stripped:
             new_text = stripped.rsplit(" ", 1)[0] + " "
@@ -325,77 +224,6 @@ class AIGOSKeyboard:
         self.text = new_text
         self.status = "Voice: deleted last word"
         self._os_press("backspace", presses=removed)
-
-    def update(self, point, pinching, now):
-        """Process pointer input and return selected/pressed positions for drawing."""
-        self.pointer_history.append((now, point[0], point[1]))
-        self.pointer_history = [item for item in self.pointer_history if now - item[0] < 0.45]
-        prediction = self.prediction_at(point)
-        key, position = self.key_at(point)
-        target = ("prediction", prediction) if prediction else ("key", key) if key else None
-
-        if target != self.hover_key:
-            self.hover_key, self.hover_started = target, now
-        pressed = None
-        # Pinch is edge-triggered.  Dwell is a deliberate, repeat-safe alternative.
-        if target and ((pinching and not self.last_pinch) or (not pinching and now - self.hover_started >= self.dwell_seconds)):
-            if now - self.last_action >= ACTION_COOLDOWN:
-                if prediction:
-                    self.insert_prediction(prediction)
-                    pressed = ("prediction", prediction)
-                else:
-                    self.apply(key)
-                    pressed = ("key", position)
-                self.last_action = now
-                self.hover_started = now
-        self.last_pinch = pinching
-        return position, pressed, prediction
-
-    def swipe_action(self, now):
-        if len(self.pointer_history) < 2 or now - self.last_action < ACTION_COOLDOWN:
-            return None
-        _, start_x, start_y = self.pointer_history[0]
-        _, end_x, end_y = self.pointer_history[-1]
-        dx, dy = end_x - start_x, end_y - start_y
-        if max(abs(dx), abs(dy)) < 115:
-            return None
-        if abs(dx) > abs(dy):
-            action = "SPACE" if dx > 0 else "DEL"
-        else:
-            action = "ENTER" if dy < 0 else "CLEAR"
-        self.apply(action)
-        self.last_action = now
-        self.pointer_history.clear()
-        return action
-
-    def draw(self, image, pointer, selected, pressed, prediction):
-        cv2.rectangle(image, (8, 98), (632, 170), (20, 24, 35), cv2.FILLED)
-        cv2.rectangle(image, (8, 98), (632, 170), (255, 210, 0), 2)
-        display = self.text.replace("\n", " ↵ ")[-54:]
-        cv2.putText(image, "AI-GOS KEYBOARD  |  " + display, (18, 126),
-                    cv2.FONT_HERSHEY_SIMPLEX, 0.48, (255, 255, 255), 1)
-        cv2.putText(image, self.status, (18, 153), cv2.FONT_HERSHEY_SIMPLEX,
-                    0.43, (0, 230, 255), 1)
-
-        for index, word in enumerate(self.predictions()):
-            x = 14 + index * 207
-            selected_prediction = prediction == word
-            color = (0, 180, 255) if selected_prediction else (68, 68, 85)
-            cv2.rectangle(image, (x, 192), (x + 194, 230), color, cv2.FILLED)
-            cv2.putText(image, word, (x + 9, 217), cv2.FONT_HERSHEY_SIMPLEX,
-                        0.52, (0, 0, 0) if selected_prediction else (255, 255, 255), 1)
-
-        for key, row, col, x, y, width, height in self.key_rectangles():
-            is_selected = selected == (row, col)
-            is_pressed = pressed == ("key", (row, col))
-            color = (50, 210, 80) if is_pressed else (0, 180, 255) if is_selected else (48, 50, 65)
-            cv2.rectangle(image, (x, y), (x + width, y + height), color, cv2.FILLED)
-            cv2.rectangle(image, (x, y), (x + width, y + height), (170, 180, 200), 1)
-            scale = 0.36 if len(key) > 2 else 0.52
-            size = cv2.getTextSize(key, cv2.FONT_HERSHEY_SIMPLEX, scale, 1)[0]
-            cv2.putText(image, key, (x + (width - size[0]) // 2, y + (height + size[1]) // 2),
-                        cv2.FONT_HERSHEY_SIMPLEX, scale, (0, 0, 0) if is_selected or is_pressed else (255, 255, 255), 1)
-        cv2.circle(image, pointer, 10, (0, 255, 255), cv2.FILLED)
 
 
 def _stdin_command_reader(command_queue):
@@ -407,8 +235,30 @@ def _stdin_command_reader(command_queue):
             command_queue.put(line)
 
 
+def _screen_telemetry(state, lock):
+    """Lightweight per-frame view of the last on-demand screen summary.
+
+    Deliberately excludes the full word/window/region lists from `result`
+    (see screen_understanding.py) — those are large and only change once per
+    SUMMARIZE_SCREEN pass, not every frame, so repeating them at ~30fps into
+    every telemetry line would be pure waste for what the HUD actually shows.
+    """
+    with lock:
+        status = state["status"]
+        result = state["result"]
+    active_window = result.get("activeWindow") if result else None
+    return {
+        "status": status,
+        "ocrAvailable": OCR_AVAILABLE,
+        "summary": result.get("summary") if result else None,
+        "activeWindow": active_window.get("title") if active_window else None,
+        "windowCount": result.get("windowCount") if result else None,
+        "elapsedMs": result.get("elapsedMs") if result else None,
+    }
+
+
 def main():
-    """Original Ultimate Gesture Control loop with only its keyboard replaced."""
+    """Original Ultimate Gesture Control loop, plus AI-GOS extensions."""
     # These settings, gesture tests, mappings and debounce values deliberately
     # match the pre-AI-GOS version.
     wcam, hcam = 640, 480
@@ -449,19 +299,90 @@ def main():
     volume = interface.QueryInterface(IAudioEndpointVolume)
     minVol, maxVol = volume.GetVolumeRange()[:2]
     volper = 0
-    keyboard = AIGOSKeyboard()
-    keyboard_active = False
+    voice_buffer = DictationBuffer()
     ai_gos = AdvancedGestureEngine()
-    # Dictates speech straight into `keyboard`'s text buffer on its own
-    # background thread — see voice_typing.py.
-    voice_typing = VoiceTypingModule(keyboard)
+
+    # On-demand screen perception (windows, OCR, UI regions) — see
+    # screen_understanding.py. A full pass is ~100s of ms to a few seconds
+    # (screenshot + OCR), so it always runs off the gesture loop's thread via
+    # _run_screen_summary() below, never inline in the per-frame path.
+    screen_ai = ScreenUnderstanding()
+    screen_summary_lock = threading.Lock()
+    screen_summary_state = {"status": "idle", "result": None}
+
+    def _run_screen_summary():
+        with screen_summary_lock:
+            if screen_summary_state["status"] == "analyzing":
+                return  # already running one pass; don't overlap another
+            screen_summary_state["status"] = "analyzing"
+        try:
+            result = screen_ai.summarize()
+            with screen_summary_lock:
+                screen_summary_state["status"] = "ready"
+                screen_summary_state["result"] = result
+        except Exception as exc:
+            with screen_summary_lock:
+                screen_summary_state["status"] = "error"
+                screen_summary_state["result"] = {"summary": f"Screen summary failed: {exc}"}
+
+    def _handle_voice_action(action):
+        """Runs an engine action named by a spoken phrase — see
+        VoiceTypingModule.ACTION_PHRASES ("summarize screen", "what's on my
+        screen", etc.), recognized identically whether spoken into the PC
+        mic or the web HUD's browser mic."""
+        if action == "SUMMARIZE_SCREEN":
+            ai_gos.status = "Analyzing screen (voice)…"
+            threading.Thread(target=_run_screen_summary, daemon=True).start()
+
+    # Lightweight, always-populated snapshot of live engine state — a
+    # dedicated dict rather than closing over per-frame locals like
+    # `current_mode`/`fps` directly, since those are only conditionally
+    # assigned each frame (see the 'current_mode' in locals() guard in the
+    # telemetry payload below) and would risk UnboundLocalError from a
+    # closure created before the frame loop ever runs. jarvis.py's
+    # engine_status tool reads this.
+    engine_status_state = {"fps": 0.0, "gesture": "IDLE", "confidence": 0.0}
+
+    def _describe_engine_status():
+        s = engine_status_state
+        return f"Tracking at {s['fps']} FPS, gesture: {s['gesture']} ({s['confidence']}% confidence)."
+
+    # Claude-backed conversational assistant — see jarvis.py. Every ask() is
+    # a real, billed API call and takes ~1-5s, so (like screen summarization
+    # above) it always runs on its own background thread via
+    # _run_jarvis_query() below, guarded so a second "Jarvis, ..." while one
+    # is still answering is dropped instead of piling up parallel requests.
+    jarvis_assistant = JarvisAssistant(
+        screen_ai,
+        run_command=lambda cmd: apply_command(cmd, [], []),
+        get_status=_describe_engine_status,
+    )
+    jarvis_lock = threading.Lock()
+
+    def _run_jarvis_query(query):
+        if not jarvis_lock.acquire(blocking=False):
+            return  # already answering a previous question; drop this one
+        try:
+            jarvis_assistant.ask(query)
+        finally:
+            jarvis_lock.release()
+
+    # Dictates speech straight into `voice_buffer`'s text buffer on its own
+    # background thread — see voice_typing.py. Also recognizes a few
+    # non-typing action phrases (routed to _handle_voice_action above), and
+    # a "Jarvis, ..." wake phrase (routed to _run_jarvis_query above)
+    # instead of typing any of it literally.
+    voice_typing = VoiceTypingModule(
+        voice_buffer,
+        on_action=_handle_voice_action,
+        on_jarvis_query=lambda q: threading.Thread(target=_run_jarvis_query, args=(q,), daemon=True).start(),
+    )
 
     active_hand_index = 0
     last_hand_state = None
     hand_state_change_time = 0
     hand_state_debounce = 0.5
     last_right_click_time = 0.0
-    four_finger_pose_prev = False
     last_scroll_y = None
 
     command_queue = queue.Queue()
@@ -470,24 +391,20 @@ def main():
 
     def apply_command(cmd, current_lmlist, current_all_hands):
         """Web-HUD equivalent of the cv2-window key shortcuts below."""
-        nonlocal keyboard_active, active_hand_index
+        nonlocal active_hand_index
         # Match commands case-insensitively, but keep the original casing of
-        # anything after a ":" — TYPE:/INSERT_PREDICTION:/VOICE_PHRASE: all
-        # carry a payload (a character, a word, a dictated phrase) that
-        # shouldn't be forced to uppercase.
+        # anything after a ":" — VOICE_PHRASE:/ASK_JARVIS: carry a payload (a
+        # dictated phrase, a question) that shouldn't be forced to uppercase.
         raw = cmd.strip()
         cmd = raw.upper()
-        if cmd == "TOGGLE_KEYBOARD":
-            keyboard_active = not keyboard_active
-            ai_gos.status = "AI-GOS keyboard opened" if keyboard_active else "AI-GOS keyboard closed"
-        elif cmd == "SWAP_HAND":
+        if cmd == "SWAP_HAND":
             if len(current_all_hands) > 1:
                 active_hand_index = (active_hand_index + 1) % len(current_all_hands)
                 ai_gos.status = f"Primary control switched to hand {active_hand_index + 1}"
             else:
                 ai_gos.status = "Show both hands to swap primary control"
         elif cmd == "CLEAR":
-            keyboard.apply("CLEAR")
+            voice_buffer.apply("CLEAR")
         elif cmd == "TOGGLE_AI_GOS":
             ai_gos.handle_key(ord('g'), current_lmlist if len(current_lmlist) else [])
         elif cmd == "CYCLE_CONTEXT":
@@ -498,13 +415,9 @@ def main():
             ai_gos.handle_key(ord('t'), current_lmlist if len(current_lmlist) else [])
         elif cmd == "TOGGLE_VOICE":
             voice_typing.toggle()
-        elif cmd.startswith("TYPE:"):
-            # Lets the web HUD's on-screen keyboard type into the same
-            # AIGOSKeyboard buffer that pinch/dwell gesture typing uses,
-            # independent of whether gesture keyboard mode is toggled on.
-            keyboard.apply(raw[len("TYPE:"):])
-        elif cmd.startswith("INSERT_PREDICTION:"):
-            keyboard.insert_prediction(raw[len("INSERT_PREDICTION:"):])
+        elif cmd == "SUMMARIZE_SCREEN":
+            ai_gos.status = "Analyzing screen…"
+            threading.Thread(target=_run_screen_summary, daemon=True).start()
         elif cmd.startswith("VOICE_PHRASE:"):
             # A phrase recognized by the *browser's* microphone (Web Speech
             # API in the web HUD — see gos/index.html), as opposed to
@@ -516,6 +429,14 @@ def main():
             # pairing. Routed through the same handle_phrase() so "space"/
             # "clear"/"delete" behave identically either way.
             voice_typing.handle_phrase(raw[len("VOICE_PHRASE:"):])
+        elif cmd.startswith("ASK_JARVIS:"):
+            # Direct text entry point into the same Claude-backed assistant
+            # the "Jarvis, ..." wake phrase reaches via voice_typing.py —
+            # lets the dashboard (or a stdin test) ask Jarvis something
+            # without needing speech recognition in the loop at all.
+            query = raw[len("ASK_JARVIS:"):].strip()
+            if query:
+                threading.Thread(target=_run_jarvis_query, args=(query,), daemon=True).start()
 
     while True:
         success, img = cap.read()
@@ -560,34 +481,9 @@ def main():
             x2, y2 = lmList[12][1:]
             x_thumb, y_thumb = lmList[4][1:]
             now = time.time()
-            keyboard.dwell_seconds = ai_gos.profile["accessibility"]["dwell_seconds"]
-
-            # Four fingers (thumb down) toggles the keyboard on or off. Checked
-            # before the mode chain below (and edge-triggered on pose entry,
-            # not held) so it works whether the keyboard is currently open or
-            # closed, and doesn't re-fire every frame the pose is held.
-            four_finger_pose = (fingers[0] == 0 and fingers[1] == 1 and fingers[2] == 1
-                                 and fingers[3] == 1 and fingers[4] == 1)
-            if four_finger_pose and not four_finger_pose_prev:
-                keyboard_active = not keyboard_active
-                ai_gos.status = "AI-GOS keyboard opened (gesture)" if keyboard_active else "AI-GOS keyboard closed (gesture)"
-            four_finger_pose_prev = four_finger_pose
-
-            # New keyboard only: three extended fingers keep all legacy mouse
-            # gestures untouched when this mode is not being intentionally used.
-            if keyboard_active:
-                pinch_threshold = PINCH_DISTANCE * ai_gos.profile["accessibility"]["sensitivity"]
-                selected, pressed, prediction = keyboard.update(
-                    (x1, y1), math.hypot(x1 - x_thumb, y1 - y_thumb) < pinch_threshold, now
-                )
-                swipe = keyboard.swipe_action(now)
-                if swipe:
-                    keyboard.status = f"Gesture shortcut: {swipe}"
-                keyboard.draw(img, (x1, y1), selected, pressed, prediction)
-                current_mode = "AI-GOS KEYBOARD"
 
             # === Robust OS Mouse Movement ===
-            elif fingers[1] == 1 and fingers[2] == 0 and fingers[3] == 0 and fingers[4] == 0:
+            if fingers[1] == 1 and fingers[2] == 0 and fingers[3] == 0 and fingers[4] == 0:
                 current_mode = "MOUSE MOVE"
                 x3 = np.interp(x1, (frameR, wcam-frameR), (0, wScr))
                 y3 = np.interp(y1, (frameR, hcam-frameR), (0, hScr))
@@ -676,7 +572,7 @@ def main():
 
             # AI-GOS only consumes the second hand, preserving the legacy
             # first-hand gesture paths above.
-            ai_confidence = ai_gos.process(img, ordered_hands, keyboard.text, now)
+            ai_confidence = ai_gos.process(img, ordered_hands, now)
         else:
             current_mode = "IDLE"
             text = "Show hand to camera"
@@ -692,7 +588,7 @@ def main():
             fps_window_start = time.time()
 
         cv2.putText(img, f"{int(fps)} FPS", (10, 20), cv2.FONT_HERSHEY_PLAIN, 1, (200, 200, 200), 1)
-        cv2.putText(img, "1:Move 2:Click 3:R-Click 4:Keyboard 5:NextTab Fist:PrevTab Thumb+Index:Volume Index+Pinky:Scroll | H:Swap G:AI-GOS ESC:Exit", (2, hcam - 5), cv2.FONT_HERSHEY_PLAIN, 0.48, (200, 200, 200), 1)
+        cv2.putText(img, "1:Move 2:Click 3:R-Click 5:NextTab Fist:PrevTab Thumb+Index:Volume Index+Pinky:Scroll | H:Swap G:AI-GOS S:SummarizeScreen ESC:Exit", (2, hcam - 5), cv2.FONT_HERSHEY_PLAIN, 0.48, (200, 200, 200), 1)
 
         # === Real-time JSON Telemetry Stream to Express Node.js Server ===
         # Built after all overlays are drawn onto img, so a streamed frame
@@ -718,10 +614,9 @@ def main():
                 except Exception:
                     frame_b64 = None
 
-            # Surface the on-screen keyboard overlay automatically once voice
-            # typing is listening, the same way opening it by gesture does.
-            if voice_typing.enabled:
-                keyboard_active = True
+            engine_status_state["fps"] = round(fps, 1)
+            engine_status_state["gesture"] = current_mode if 'current_mode' in locals() and current_mode else "IDLE"
+            engine_status_state["confidence"] = round(ai_confidence * 100 if ai_confidence else 94.8, 1)
 
             telemetry_payload = {
                 "source": "REALTIME_ULTIMATE_GESTURE_ENGINE",
@@ -736,15 +631,16 @@ def main():
                 "gpu": 68,
                 "engineActive": True,
                 "frame": f"data:image/jpeg;base64,{frame_b64}" if frame_b64 else None,
-                "keyboard": {
-                    "active": keyboard_active,
-                    "text": keyboard.text,
-                    "predictions": keyboard.predictions(),
-                    "status": keyboard.status,
-                },
                 "voice": {
                     "enabled": voice_typing.enabled,
                     "text": voice_typing.last_text,
+                },
+                "screen": _screen_telemetry(screen_summary_state, screen_summary_lock),
+                "jarvis": {
+                    "available": jarvis_assistant.available,
+                    "status": jarvis_assistant.status,
+                    "lastQuery": jarvis_assistant.last_query,
+                    "lastResponse": jarvis_assistant.last_response,
                 },
             }
             sys.stdout.write(json.dumps(telemetry_payload) + "\n")
@@ -758,16 +654,13 @@ def main():
             continue
 
         try:
-            cv2.imshow("Ultimate Gesture Control - Mouse | AI-GOS Keyboard | Volume", img)
+            cv2.imshow("Ultimate Gesture Control - Mouse | Volume", img)
             key = cv2.waitKey(1)
             if key % 256 == 27:
                 print("Escape hit, closing the app")
                 break
             elif key % 256 == ord('c'):
-                keyboard.apply("CLEAR")
-            elif key % 256 == ord('k'):
-                keyboard_active = not keyboard_active
-                ai_gos.status = "AI-GOS keyboard opened" if keyboard_active else "AI-GOS keyboard closed"
+                voice_buffer.apply("CLEAR")
             elif key % 256 == ord('h'):
                 if len(all_hands) > 1:
                     active_hand_index = (active_hand_index + 1) % len(all_hands)
@@ -776,6 +669,9 @@ def main():
                     ai_gos.status = "Show both hands to swap primary control"
             elif key % 256 == ord('v'):
                 voice_typing.toggle()
+            elif key % 256 == ord('s'):
+                ai_gos.status = "Analyzing screen…"
+                threading.Thread(target=_run_screen_summary, daemon=True).start()
             else:
                 ai_gos.handle_key(key % 256, lmList if len(lmList) else [])
         except Exception:

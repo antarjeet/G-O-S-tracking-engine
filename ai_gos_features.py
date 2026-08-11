@@ -61,11 +61,11 @@ class AdvancedGestureEngine:
         default = {
             "profiles": {
                 "Default": {
-                    "accessibility": {"sensitivity": 1.0, "dwell_seconds": 0.65},
+                    "accessibility": {"sensitivity": 1.0},
                     "trained_gestures": {},
                 },
                 "Accessible": {
-                    "accessibility": {"sensitivity": 1.35, "dwell_seconds": 1.0},
+                    "accessibility": {"sensitivity": 1.35},
                     "trained_gestures": {},
                 },
             }
@@ -198,7 +198,7 @@ class AdvancedGestureEngine:
         else:
             pyautogui.hotkey("win", "d")
 
-    def process(self, image, hands, keyboard_text, now):
+    def process(self, image, hands, now):
         """Run secondary-hand gestures and return current confidence.
 
         Primary hand remains untouched: its legacy behavior is handled by the

@@ -7,10 +7,11 @@ pip install opencv-python mediapipe numpy autopy pyautogui pycaw comtypes
 python ultimate_gesture_control.py
 ```
 
-`ultimate_gesture_control.py` runs mouse, click, volume, tabs, adaptive
-keyboard, multi-hand controls, profiles, confidence analytics, and optional
-voice input in one camera window. Voice input also needs `SpeechRecognition`
-and `PyAudio`; toggle it with `V`.
+`ultimate_gesture_control.py` runs mouse, click, volume, tabs, multi-hand
+controls, profiles, confidence analytics, and optional voice input in one
+camera window. Voice input also needs `SpeechRecognition` and `PyAudio`;
+toggle it with `V`. Text entry is voice-only — there is no on-screen or
+gesture-typed keyboard.
 
 ## Primary-hand controls
 
@@ -22,34 +23,15 @@ mouse:
 | Index finger only | Move mouse |
 | Index + middle close | Left click |
 | Index + middle + ring | Right click |
-| Index + middle + ring + pinky (thumb down) | Open/close AI-GOS keyboard |
 | Open hand (all 5) | Next tab/window |
 | Closed hand (fist) | Previous tab/window |
 | Thumb + index | Volume |
 | Index + pinky ("rock on"), move hand up/down | Scroll |
-| `K` command | Also opens/closes AI-GOS keyboard mode |
 
 The primary hand retains the original controls. Advanced actions use the
 second hand to avoid gesture conflicts. Press `H` when both hands are visible
 to swap the primary role, so either hand can operate mouse, volume, and
-keyboard controls.
-
-## AI-GOS keyboard
-
-Show four fingers (index + middle + ring + pinky, thumb down) or press `K` to
-open keyboard mode; it never opens merely because both hands or three fingers
-are visible. Then hover the index over a key and pinch thumb-to-index to
-type. Dwell typing, word predictions, adaptive key sizes, and swipe shortcuts
-are included.
-
-| Keyboard gesture | Action |
-|---|---|
-| Swipe left/right | Delete/space |
-| Swipe up/down | Enter/clear |
-| Pinch a predicted word | Insert the complete word |
-
-Text stays in the AI-GOS panel and is not inserted automatically in another
-application.
+scroll controls.
 
 ## Advanced second-hand controls
 
@@ -90,8 +72,8 @@ Confidence is a hand-visibility heuristic, not a trained-model probability.
 | `T` | Train the currently visible pose as a custom gesture |
 | `V` | Start/stop optional voice capture |
 | `H` | Swap the primary control hand when two hands are visible |
-| `C` | Clear keyboard text |
-| `K` | Open/close AI-GOS keyboard mode |
+| `C` | Clear dictated text |
+| `S` | Summarize the current screen (OCR + window scan) |
 | `Esc` | Exit |
 
 Profiles and trained poses are saved to `gesture_profiles.json` when possible.
@@ -150,15 +132,12 @@ without logging in first.
   telemetry connection — an expired or missing session gets disconnected and
   sent back to the login screen automatically.
 
-## Live keyboard and voice state
+## Live voice state
 
-Once the engine is running, the telemetry stream includes `keyboard` (`active`,
-`text`, `predictions`, `status`) and `voice` (`enabled`, `text`) — this is what
-drives the HUD's on-screen predictive keyboard and the VOICE status chip.
-Clicking a key or a predicted word in the HUD sends a `TYPE:<key>` or
-`INSERT_PREDICTION:<word>` command that types into the same `AIGOSKeyboard`
-buffer that pinch/dwell gesture typing uses, so gesture typing and clicking
-the on-screen keyboard both work on the same live text.
+Once the engine is running, the telemetry stream includes `voice` (`enabled`,
+`text`) — this is what drives the HUD's VOICE status chip. Dictated speech
+types straight into whatever field has OS focus; it isn't buffered or
+displayed in the HUD.
 
 ## Existing standalone applications
 
@@ -171,7 +150,6 @@ examples remain in this repository and can still be run independently.
 | `python combined_gesture_control.py` | Original combined mouse, volume, and tab controller |
 | `python HandTracking.py` | Original hand-volume controller |
 | `python hand_volume_control.py` | Class-based hand-volume controller |
-| `python virtual_keyboard.py` | Standalone legacy virtual keyboard |
 | `python HandTrackingMin.py` | Minimal landmark-tracking/debug example |
 
 ## Legacy configuration reference

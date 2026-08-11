@@ -22,3 +22,6 @@ htmlcov/
 # OS-generated files
 .DS_Store
 Thumbs.db
+
+# Secrets — Jarvis's ANTHROPIC_API_KEY (see .env.example)
+.env

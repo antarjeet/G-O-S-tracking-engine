@@ -4,14 +4,15 @@
 
 AI-GOS V2 is an all-in-one, webcam-based touchless computer controller. Its
 entry point is `ultimate_gesture_control.py`, which combines legacy controls
-with an adaptive keyboard, multi-hand gestures, personalization, confidence
-analytics, and optional voice input.
+with multi-hand gestures, personalization, confidence analytics, and
+voice-dictated text entry (optional PC-mic voice input, or the web HUD's
+browser mic).
 
 ## Architecture
 
 ```text
 Webcam -> HandTrackingModule -> landmarks for up to two hands
-       -> Ultimate Gesture Control: primary-hand legacy input + keyboard
+       -> Ultimate Gesture Control: primary-hand legacy input
        -> AdvancedGestureEngine: secondary-hand actions, profiles, analytics
        -> Windows mouse, keyboard, volume, and window automation
 ```
@@ -19,7 +20,7 @@ Webcam -> HandTrackingModule -> landmarks for up to two hands
 The first hand remains the legacy controller. The second hand is dedicated to
 advanced actions, reducing accidental conflicts. When two hands are visible,
 press `H` to swap the primary role; either hand can therefore run the legacy
-mouse/keyboard controls while the other performs advanced actions.
+mouse controls while the other performs advanced actions.
 
 ## Primary-hand controls
 
@@ -29,12 +30,10 @@ mouse:
 - Index only: smooth mouse movement
 - Index + middle close: left click
 - Index + middle + ring: right click
-- Index + middle + ring + pinky (thumb down): open/close AI-GOS keyboard
 - Open hand (all 5): next tab/window
 - Closed hand (fist): previous tab/window
 - Thumb + index: system volume
 - Index + pinky ("rock on"), move hand up/down: scroll
-- `K` command: also opens/closes AI-GOS keyboard mode
 
 Right click uses a cooldown rather than a per-frame pinch check, since a
 held pose firing every frame would spam the context menu open/closed. Scroll
@@ -45,15 +44,6 @@ use the more reliable y-position check instead. Scroll tracks the index
 fingertip's vertical movement while the pose is held, and resets its
 reference point the moment the pose is released so re-entering it doesn't
 jump.
-
-## AI-GOS keyboard
-
-Keyboard mode opens and closes with `K` or the four-finger pose above
-(edge-triggered on pose entry, so holding it doesn't repeatedly toggle). It
-supports index hover, thumb/index pinch typing, dwell typing, predictive
-word insertion, swipe editing, and session-local adaptive key sizing.
-Default and Accessible profiles adjust dwell duration and pinch sensitivity.
-Typed text stays inside the AI-GOS panel.
 
 ## Secondary-hand advanced controls
 
@@ -91,8 +81,8 @@ heuristic, not a probability from a trained gesture-classification model.
 - `H`: swap the primary control hand when two hands are visible
 
 Profiles are persisted in `gesture_profiles.json` when writable. The dashboard
-reports recognition confidence, actions, keyboard WPM, profile, context, voice
-state, and the latest recognition result.
+reports recognition confidence, actions, profile, context, voice state, and
+the latest recognition result.
 
 ## Phone camera pairing (web HUD)
 
@@ -143,7 +133,7 @@ browser, so there's no user session to check there at all.
 
 | Module | Responsibility |
 |---|---|
-| `ultimate_gesture_control.py` | All-in-one application loop and keyboard |
+| `ultimate_gesture_control.py` | All-in-one application loop |
 | `ai_gos_features.py` | Recognition, profiles, contexts, analytics, voice, advanced actions |
 | `HandTrackingModule.py` | MediaPipe tracking and multi-hand landmark access |
 
@@ -165,18 +155,9 @@ applications. They remain available in the project:
 | `combined_gesture_control.py` | Mouse, volume, and tab-switching example |
 | `HandTracking.py` | Direct hand-volume example |
 | `hand_volume_control.py` | Object-oriented volume controller |
-| `virtual_keyboard.py` | Standalone legacy virtual keyboard |
 | `HandTrackingMin.py` | Minimal hand-landmark debugging example |
 
 `HandTrackingModule.py` keeps its original public methods:
 `find_hands`, `find_position`, `fingersUp`, and `find_Distance`. The added
 `find_all_positions` method makes all detected hands available to AI-GOS while
 leaving the original first-hand workflow compatible.
-
-## Retired ultimate-keyboard documentation
-
-The original three-finger (index + middle + ring) keyboard-entry gesture was
-retired in favor of `K`-only, then later reintroduced on a *different*,
-non-conflicting pose (four fingers, thumb down) once three fingers was
-assigned to right click. The standalone `virtual_keyboard.py` remains
-documented and unchanged.
