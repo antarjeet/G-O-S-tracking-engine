@@ -38,6 +38,18 @@ from jarvis import JarvisAssistant
 WCAM, HCAM = 640, 480
 FRAME_MARGIN = 100
 RIGHT_CLICK_COOLDOWN = 0.6
+
+# Range for the "Mouse Speed" slider in the web HUD's Phone & Settings tab
+# (see SET_MOUSE_SPEED: handling in apply_command() below). 1.0x reproduces
+# the original fixed smoothening exactly; below 1 trades responsiveness for
+# extra jitter smoothing, above 1 trades smoothing for snappier tracking.
+MOUSE_SPEED_MIN = 0.5
+MOUSE_SPEED_MAX = 3.0
+MOUSE_SPEED_DEFAULT = 1.0
+
+
+def _clamp_mouse_speed(value):
+    return min(max(value, MOUSE_SPEED_MIN), MOUSE_SPEED_MAX)
 SCROLL_SENSITIVITY = 2.2
 
 # What the web HUD actually displays: the full working-resolution frame
@@ -268,6 +280,15 @@ def main():
     # at a good FPS). 7 felt sluggish; 3 tracks much closer to real-time
     # while still smoothing out per-frame jitter.
     frameR, smoothening = 100, 3
+    # Set from AI_GOS_MOUSE_SPEED at engine start (see startPythonEngine() in
+    # server.js), then live-retunable without a restart via the
+    # SET_MOUSE_SPEED: command apply_command() handles below — that's what
+    # the "Mouse Speed" slider in the web HUD's Phone & Settings tab sends.
+    try:
+        _initial_mouse_speed = float(os.environ.get("AI_GOS_MOUSE_SPEED", MOUSE_SPEED_DEFAULT))
+    except ValueError:
+        _initial_mouse_speed = MOUSE_SPEED_DEFAULT
+    mouse_speed_state = {"multiplier": _clamp_mouse_speed(_initial_mouse_speed)}
     # fps is averaged over a rolling window rather than recomputed from a
     # single 1/dt every frame: instantaneous per-frame timing is noisy (OS
     # scheduling jitter, one slightly-early iteration) and can momentarily
@@ -359,6 +380,14 @@ def main():
     )
     jarvis_lock = threading.Lock()
 
+    # Announce Jarvis as soon as the engine comes up, so the user knows it's
+    # listening for the "Jarvis, ..." wake phrase without having to check the
+    # dashboard. Spoken on its own thread since pyttsx3's runAndWait() blocks
+    # and startup shouldn't wait on it; printed too for headless/console runs.
+    jarvis_greeting = "Jarvis is here, ask me anything."
+    print(jarvis_greeting)
+    threading.Thread(target=jarvis_assistant.speak, args=(jarvis_greeting,), daemon=True).start()
+
     def _run_jarvis_query(query):
         if not jarvis_lock.acquire(blocking=False):
             return  # already answering a previous question; drop this one
@@ -418,6 +447,13 @@ def main():
         elif cmd == "SUMMARIZE_SCREEN":
             ai_gos.status = "Analyzing screen…"
             threading.Thread(target=_run_screen_summary, daemon=True).start()
+        elif cmd.startswith("SET_MOUSE_SPEED:"):
+            try:
+                mouse_speed_state["multiplier"] = _clamp_mouse_speed(
+                    float(raw[len("SET_MOUSE_SPEED:"):].strip())
+                )
+            except ValueError:
+                pass
         elif cmd.startswith("VOICE_PHRASE:"):
             # A phrase recognized by the *browser's* microphone (Web Speech
             # API in the web HUD — see gos/index.html), as opposed to
@@ -487,8 +523,11 @@ def main():
                 current_mode = "MOUSE MOVE"
                 x3 = np.interp(x1, (frameR, wcam-frameR), (0, wScr))
                 y3 = np.interp(y1, (frameR, hcam-frameR), (0, hScr))
-                clocX = plocX + (x3 - plocX) / smoothening
-                clocY = plocY + (y3 - plocY) / smoothening
+                # Higher mouse_speed -> lower effective smoothening -> the
+                # cursor catches up to the target position in fewer frames.
+                effective_smoothening = max(1.0, smoothening / mouse_speed_state["multiplier"])
+                clocX = plocX + (x3 - plocX) / effective_smoothening
+                clocY = plocY + (y3 - plocY) / effective_smoothening
 
                 # Clamp within screen bounds and move OS cursor
                 target_x = int(min(max(0, clocX), wScr - 1))
@@ -624,6 +663,7 @@ def main():
                 "latency": 9.5,
                 "confidence": round(ai_confidence * 100 if ai_confidence else 94.8, 1),
                 "gesture": current_mode if 'current_mode' in locals() and current_mode else "IDLE",
+                "mouseSpeed": mouse_speed_state["multiplier"],
                 "landmarks": landmarks_data,
                 "pointer": {"x": px, "y": py},
                 "depth": "0.82m",

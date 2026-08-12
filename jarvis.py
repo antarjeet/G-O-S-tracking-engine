@@ -46,11 +46,17 @@ JARVIS_MODEL = "claude-opus-5"
 SYSTEM_PROMPT = (
     "You are Jarvis, the voice assistant built into AI-GOS, a touchless "
     "webcam-gesture computer control system. The user is speaking to you out "
-    "loud and your reply is read aloud by text-to-speech, so keep answers to "
-    "one or two short sentences unless the user clearly wants more detail. "
-    "You have tools to see what is on the user's screen and to control the "
-    "gesture engine — use them instead of guessing when the question depends "
-    "on live state."
+    "loud and your reply is read aloud by text-to-speech, so write the way "
+    "a person actually talks, not the way a document reads: contractions "
+    "(it's, that'll, you're), everyday words over formal ones, no bullet "
+    "points, numbered lists, headers, or markdown of any kind — those don't "
+    "survive being spoken. Keep answers to one or two short sentences unless "
+    "the user clearly wants more detail. Have a bit of warmth and "
+    "personality — a little dry wit is fine — but don't overdo it or pad "
+    "answers with filler like 'great question'; get to the point like a "
+    "sharp colleague would. You have tools to see what is on the user's "
+    "screen and to control the gesture engine — use them instead of "
+    "guessing when the question depends on live state."
 )
 
 # The apply_command() commands that are safe to run with no live hand data
@@ -95,8 +101,41 @@ class JarvisAssistant:
         if TTS_AVAILABLE:
             try:
                 self._tts_engine = pyttsx3.init()
+                self._configure_voice(self._tts_engine)
             except Exception:
                 self._tts_engine = None
+
+    @staticmethod
+    def _configure_voice(engine):
+        """Nudge pyttsx3's defaults away from the flat, rushed-sounding
+        Windows SAPI5 default (~200 wpm, first-registered voice — usually
+        David) toward something closer to normal conversational speech.
+        Best-effort: engine.getProperty/setProperty can fail or return
+        nothing on a stripped-down speech stack, so every step is
+        independently guarded rather than one try/except around all of it."""
+        try:
+            engine.setProperty("rate", 175)
+        except Exception:
+            pass
+        try:
+            engine.setProperty("volume", 1.0)
+        except Exception:
+            pass
+        try:
+            voices = engine.getProperty("voices") or []
+            # Prefer a voice explicitly tagged conversational/natural if the
+            # installed voice pack has one; otherwise Zira reads noticeably
+            # less clipped than the default David voice on stock Windows.
+            preferred = None
+            for voice in voices:
+                name = (getattr(voice, "name", "") or "").lower()
+                if "zira" in name:
+                    preferred = voice.id
+                    break
+            if preferred:
+                engine.setProperty("voice", preferred)
+        except Exception:
+            pass
 
     @property
     def available(self):
