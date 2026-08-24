@@ -175,10 +175,13 @@ without logging in first.
 
 ## 🎙️ Live voice state
 
-Once the engine is running, the telemetry stream includes `voice` (`enabled`,
-`text`) — this is what drives the HUD's VOICE status chip. Dictated speech
-types straight into whatever field has OS focus; it isn't buffered or
-displayed in the HUD.
+In the web HUD, voice typing starts automatically the moment the engine
+starts — no separate toggle needed there. (Standalone mode, run directly
+with `python ultimate_gesture_control.py`, still uses the `V` key from the
+table above.) Once the engine is running, the telemetry stream includes
+`voice` (`enabled`, `text`) — this is what drives the HUD's VOICE status
+chip. Dictated speech types straight into whatever field has OS focus; it
+isn't buffered or displayed in the HUD.
 
 ## 🗂️ Existing standalone applications
 
@@ -226,6 +229,12 @@ folder), because it locates the engine via a plain relative path
 (`engine/ultimate_gesture_control.py` from `server.js`) and spawns it as a
 child process — the two only make sense running on the same machine, in the
 same checkout.
+
+It also handles the operational basics: security headers and gzip
+compression (`helmet`, `compression`), request logging (`morgan`), rate
+limiting on login/signup, a MongoDB connection that retries with backoff,
+and a graceful shutdown on `Ctrl+C` that stops the Python engine, closes the
+Socket.io/HTTPS server, and closes the DB connection cleanly before exiting.
 
 ## 🔗 Related repositories
 
