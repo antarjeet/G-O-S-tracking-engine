@@ -6,10 +6,8 @@ import math
 from comtypes import CLSCTX_ALL
 from pycaw.pycaw import AudioUtilities, IAudioEndpointVolume
 
-# Set the webcam dimensions
 wcam, hcam = 640, 480
 
-# Initialize the webcam
 cap = cv2.VideoCapture(0)
 cap.set(3, wcam)
 cap.set(4, hcam)
@@ -23,7 +21,6 @@ interface = devices.Activate(
     IAudioEndpointVolume._iid_, CLSCTX_ALL, None)
 volume = interface.QueryInterface(IAudioEndpointVolume)
 
-# Get the volume control range
 volRange = volume.GetVolumeRange()
 minVol = volRange[0]
 maxVol = volRange[1]

@@ -1,15 +1,8 @@
-"""AI Engine Bridge for AI-GOS Virtual Mouse.
-
-Streams real-time hand landmarks (21 points), gesture classification,
-and telemetry data to Node.js/Express backend via JSON over STDOUT or WebSocket.
-"""
-
 import sys
 import json
 import time
 import math
 
-# Try importing OpenCV and MediaPipe for camera hand tracking
 try:
     import cv2
     import mediapipe as mp
@@ -58,7 +51,6 @@ class HandTrackingBridge:
                         for lm in hand_landmarks.landmark:
                             landmarks.append({"x": round(lm.x, 4), "y": round(lm.y, 4), "z": round(lm.z, 4)})
 
-                        # Index tip is point 8
                         index_tip = landmarks[8]
                         pointer_x = int(index_tip["x"] * 1920)
                         pointer_y = int(index_tip["y"] * 1080)
@@ -77,7 +69,6 @@ class HandTrackingBridge:
                         }
 
             if not data:
-                # Simulation fallback for guaranteed real-time stream
                 angle += 0.05
                 base_joints = [
                     {"x": 0.5, "y": 0.8},
@@ -112,11 +103,10 @@ class HandTrackingBridge:
                     "gpu": 68
                 }
 
-            # Send JSON string to STDOUT
             sys.stdout.write(json.dumps(data) + "\n")
             sys.stdout.flush()
 
-            time.sleep(0.033)  # ~30 FPS
+            time.sleep(0.033)
 
 
 if __name__ == "__main__":

@@ -3,8 +3,10 @@
 Run the complete touchless control system with:
 
 ```bash
-pip install opencv-python mediapipe numpy autopy pyautogui pycaw comtypes
-python ultimate_gesture_control.py
+cd engine
+python -m venv .venv
+.venv\Scripts\pip install -r requirements.txt
+.venv\Scripts\python ultimate_gesture_control.py
 ```
 
 `ultimate_gesture_control.py` runs mouse, click, volume, tabs, multi-hand
@@ -12,6 +14,40 @@ controls, profiles, confidence analytics, and optional voice input in one
 camera window. Voice input also needs `SpeechRecognition` and `PyAudio`;
 toggle it with `V`. Text entry is voice-only — there is no on-screen or
 gesture-typed keyboard.
+
+## 🚀 Running the full web HUD (engine + backend + frontend)
+
+The commands above run the engine standalone in its own camera window. To
+drive it from the browser dashboard instead (live telemetry, phone camera,
+voice AI, analytics — see [Related repositories](#-related-repositories) for
+the frontend repo), run these pieces, each in its own terminal:
+
+**1. Python engine's virtualenv** (`engine/`, this repo, once):
+```
+cd engine
+python -m venv .venv
+.venv\Scripts\pip install -r requirements.txt
+```
+You don't run `ultimate_gesture_control.py` directly for the web HUD — the
+backend below spawns it for you when you click **Start Engine**.
+
+**2. Backend** (repo root):
+```
+npm install       # first time only
+npm start
+```
+Leave this running — it serves `https://localhost:5000`, spawns
+`engine/ultimate_gesture_control.py` on demand, and streams its telemetry to
+the frontend over Socket.io.
+
+**3. Frontend** (the separate `gos` repo — clone it alongside this one or
+anywhere else):
+```
+npm install       # first time only
+npm run dev
+```
+Open the URL Vite prints (typically `http://localhost:5173`), sign up /
+log in, then click **Start Engine**.
 
 ## 🖱️ Primary-hand controls
 
@@ -82,11 +118,17 @@ bar in Browser, opens the command palette in Coding, and play/pauses in Media.
 
 ## 📁 Files
 
+All Python engine files live under `engine/`:
+
 | File | Purpose |
 |---|---|
-| `ultimate_gesture_control.py` | Main all-in-one application |
-| `ai_gos_features.py` | Recognition, profiles, analytics, advanced gestures, voice |
-| `HandTrackingModule.py` | MediaPipe single/multi-hand tracking |
+| `engine/ultimate_gesture_control.py` | Main all-in-one application |
+| `engine/ai_gos_features.py` | Recognition, profiles, analytics, advanced gestures, voice |
+| `engine/HandTrackingModule.py` | MediaPipe single/multi-hand tracking |
+
+The Node/Express backend (`server.js`, `auth.js`, `db.js`, `certSetup.js`,
+`public/`, `scripts/`) lives directly at the repo root — see
+[Web HUD backend](#-web-hud-backend) below.
 
 Windows is required for the pycaw volume control. Use good lighting and test
 desktop automation in a safe window before using it for important work.
@@ -96,9 +138,9 @@ desktop automation in a safe window before using it for important work.
 When launched from the `gos` web dashboard (not run standalone), you
 can use a phone's camera instead of the PC's webcam — no app install needed:
 
-1. Start the backend from `../gos/backend` (`npm start`) — it serves the
-   `gos` frontend (`index.html`) itself on the same origin, no separate dev
-   server needed.
+1. Have the backend and frontend both running (see
+   [Running the full web HUD](#-running-the-full-web-hud-engine--backend--frontend)
+   above) and the frontend open in your browser.
 2. In the HUD, click the phone icon next to **Start Engine** to get a QR code.
 3. Scan it with your phone's camera app. Phone and PC must be on the **same
    Wi-Fi network**.
@@ -122,9 +164,8 @@ without logging in first.
 
 - First visit: click **Sign Up** (username, email, password — 8+ characters)
   to create an account, or **Log In** if you already have one.
-- Accounts are stored locally in `../gos/backend/data/users.json`, passwords
-  hashed with bcrypt — nothing is sent anywhere external. Sessions are stored
-  in `../gos/backend/data/sessions.json` and last 30 days.
+- Accounts are stored in MongoDB (see `db.js`), passwords hashed with
+  bcrypt. Sessions are cookie-based and last 30 days.
 - There's no "admin" distinction; any account can control the engine and
   phone camera. This gates out strangers on your network, not different
   permission levels between people you trust.
@@ -143,6 +184,8 @@ displayed in the HUD.
 
 The all-in-one application is the recommended entry point, but the original
 examples remain in this repository and can still be run independently.
+
+Run these from inside `engine/` (or activate its `.venv` first).
 
 | Command | Current purpose |
 |---|---|
@@ -172,8 +215,21 @@ scroll_sensitivity = 2.2
 available, and `find_all_positions` extends it for AI-GOS multi-hand support.
 
 
+## 🌐 Web HUD backend
+
+`server.js` (Node/Express + Socket.io, at this repo's root) is what spawns
+this engine and exposes it to the `gos` web dashboard over REST + Socket.io
+— see [Running the full web HUD](#-running-the-full-web-hud-engine--backend--frontend)
+near the top for the run commands. It lives in this repo, directly alongside
+`engine/` (not in a separate repo, and not nested in its own `backend/`
+folder), because it locates the engine via a plain relative path
+(`engine/ultimate_gesture_control.py` from `server.js`) and spawns it as a
+child process — the two only make sense running on the same machine, in the
+same checkout.
+
 ## 🔗 Related repositories
 
-The `gos` web dashboard (frontend + backend) that can drive this engine over
-the phone-camera/web-HUD flow described above lives in a separate repo:
+The `gos` frontend (Vite + React) that talks to the backend above over
+HTTP/Socket.io lives in its own separate repo, since it has no filesystem
+dependency on this one:
 [G-O-S-tracking](https://github.com/antarjeet/G-O-S-tracking).

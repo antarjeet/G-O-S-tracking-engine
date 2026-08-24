@@ -31,8 +31,6 @@ class HandDetector():
         img_rgb = cv2.cvtColor(img, cv2.COLOR_BGR2RGB)
         self.results = self.hands.process(img_rgb)
 
-        # print(results.multi_hand_landmarks)
-
         if self.results.multi_hand_landmarks:
             for hand_landmarks in self.results.multi_hand_landmarks:
                 if draw:
@@ -70,12 +68,9 @@ class HandDetector():
         return self.lmList, bbox
 
     def find_all_positions(self, img, draw=False):
-        """Return landmarks for every tracked hand without changing legacy state.
-
-        Existing applications continue to use :meth:`find_position` and the
-        first hand.  AI-GOS uses this method to make the second hand available
-        as a non-conflicting gesture controller.
-        """
+        """Existing applications continue to use find_position() and the
+        first hand. AI-GOS uses this method to make the second hand
+        available as a non-conflicting gesture controller."""
         all_hands = []
         if not self.results.multi_hand_landmarks:
             return all_hands
@@ -91,21 +86,16 @@ class HandDetector():
         return all_hands
 
     def fingersUp(self):
-
         fingers = []
-
-        # thumb
 
         if self.lmList[self.tipIds[0]][1] > self.lmList[self.tipIds[0] - 1][1]:
             fingers.append(1)
         else:
             fingers.append(0)
 
-        # fingers
         for id in range(1, 5):
             if self.lmList[self.tipIds[id]][2] < self.lmList[self.tipIds[id] - 2][2]:
                 fingers.append(1)
-
             else:
                 fingers.append(0)
         return fingers

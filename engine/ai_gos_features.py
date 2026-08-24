@@ -1,9 +1,6 @@
-"""Opt-in AI-GOS services used by the Ultimate Gesture Control application.
-
-This module intentionally keeps advanced interaction on a *second* hand.  The
-legacy first-hand mouse, volume, click and tab gestures therefore continue to
-work exactly as before.
-"""
+"""This module intentionally keeps advanced interaction on a *second* hand,
+so the legacy first-hand mouse, volume, click and tab gestures continue to
+work exactly as before."""
 
 import json
 import math
@@ -17,8 +14,6 @@ PROFILE_PATH = Path(__file__).with_name("gesture_profiles.json")
 
 
 class AdvancedGestureEngine:
-    """Multi-hand interaction, profiles, confidence and live analytics."""
-
     def __init__(self):
         self.enabled = True
         self.contexts = ("GENERAL", "BROWSER", "CODING", "MEDIA")
@@ -86,7 +81,7 @@ class AdvancedGestureEngine:
 
     @staticmethod
     def finger_state(hand):
-        """Return [thumb, index, middle, ring, pinky] without handedness assumptions."""
+        # Returns [thumb, index, middle, ring, pinky] without handedness assumptions.
         if not hand or len(hand) < 21:
             return [0, 0, 0, 0, 0]
         return [
@@ -105,7 +100,6 @@ class AdvancedGestureEngine:
         ys = [item[2] for item in hand]
         area = max(xs) - min(xs)
         area *= max(ys) - min(ys)
-        # A hand that occupies a useful camera area produces a higher confidence.
         return round(min(0.99, max(0.35, area / 12500)), 2)
 
     def train_current_pose(self, hand):
@@ -121,11 +115,8 @@ class AdvancedGestureEngine:
         self.status = f"Trained {name} in {self.profile_name}"
 
     def _recognize(self, hands, now):
-        """Classify static, temporal and user-trained gestures for the HUD.
-
-        Classification is intentionally separate from actions: the first hand
-        is observed only, leaving the legacy control loop authoritative.
-        """
+        # Classification is intentionally separate from actions: the first
+        # hand is observed only, leaving the legacy control loop authoritative.
         hand = hands[0]
         fingers = self.finger_state(hand)
         raised = sum(fingers)
@@ -153,10 +144,8 @@ class AdvancedGestureEngine:
                     labels.append("Air Hold")
             else:
                 self.hold_started = None
-            # An air tap is a quick, mostly vertical index-finger strike.
             if now - start[0] < 0.22 and dy > 55 and abs(dx) < 45:
                 labels.append("Air Tap")
-            # Circle recognition: motion wraps around its recent centroid.
             if len(self.motion_history) >= 8:
                 xs = [item[1] for item in self.motion_history]
                 ys = [item[2] for item in self.motion_history]
@@ -199,11 +188,8 @@ class AdvancedGestureEngine:
             pyautogui.hotkey("win", "d")
 
     def process(self, image, hands, now):
-        """Run secondary-hand gestures and return current confidence.
-
-        Primary hand remains untouched: its legacy behavior is handled by the
-        original application loop.  The secondary hand acts as the controller.
-        """
+        # Primary hand remains untouched: its legacy behavior is handled by
+        # the original application loop. The secondary hand is the controller.
         began = time.perf_counter()
         if not self.enabled or not hands:
             return 0.0
@@ -225,7 +211,7 @@ class AdvancedGestureEngine:
         cooldown = 0.45 / self.profile["accessibility"]["sensitivity"]
 
         # Pinch-and-move scroll replaces the less reliable air-wheel gesture.
-        # Move vertically immediately after pinching to scroll.  Hold a still
+        # Move vertically immediately after pinching to scroll. Hold a still
         # pinch briefly to begin the existing drag/drop interaction instead.
         if pinch < 36:
             if self.pinch_started_at is None:
@@ -257,7 +243,6 @@ class AdvancedGestureEngine:
             self.pinch_scroll_y = None
             self.pinch_scrolling = False
 
-        # Two fingers on the second hand scroll vertically.
         if fingers[1:3] == [1, 1] and sum(fingers[3:]) == 0:
             if self.last_secondary_y is not None:
                 delta = index[1] - self.last_secondary_y
@@ -268,9 +253,6 @@ class AdvancedGestureEngine:
         else:
             self.last_secondary_y = None
 
-
-        # Four fingers maximizes the active window; open palm invokes the
-        # selected context shortcut.  Both are debounce protected.
         if now - self.last_action > cooldown:
             if fingers[1:] == [1, 1, 1, 1]:
                 pyautogui.hotkey("win", "up")

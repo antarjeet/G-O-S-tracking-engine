@@ -1,10 +1,8 @@
 """Screen understanding: OCR, window/UI recognition, and screen summarization.
 
-Perceives the *display* the same way HandTrackingModule.py perceives the
-*camera* — a screenshot in, a structured summary out. This runs on demand
-(triggered by the SUMMARIZE_SCREEN engine command), never per-frame: a full
-capture + OCR pass takes on the order of 100-500ms, far too slow for the
-~30fps gesture loop.
+This runs on demand (triggered by the SUMMARIZE_SCREEN engine command), never
+per-frame: a full capture + OCR pass takes on the order of 100-500ms, far too
+slow for the ~30fps gesture loop.
 
 What's real here vs. heuristic, so callers know how much to trust each field:
 - Window / active-app / multi-window understanding (list_windows,
@@ -13,11 +11,10 @@ What's real here vs. heuristic, so callers know how much to trust each field:
 - OCR / text extraction (extract_text) is real text recognition via
   Tesseract, when installed (OCR_AVAILABLE is False otherwise, and every
   method degrades to returning no text rather than raising).
-- locate_text() is the context-aware-interaction building block: resolve a
-  target ("the Save button") against live OCR output and get back click
-  coordinates, instead of a fixed gesture-to-coordinate mapping. It is not
-  wired into voice/gesture command parsing here — that's a separate,
-  not-yet-built NLU layer on top of this.
+- locate_text() resolves a target ("the Save button") against live OCR
+  output and gets back click coordinates, instead of a fixed
+  gesture-to-coordinate mapping. It is not wired into voice/gesture command
+  parsing here — that's a separate, not-yet-built NLU layer on top of this.
 - Button/icon "detection" (detect_ui_regions) is a geometric heuristic over
   OpenCV contours (size/aspect-ratio filtering), not a trained UI-element
   classifier — it finds plausible rectangular regions, it does not know what
@@ -45,9 +42,8 @@ except ImportError:
 
 
 def _find_tesseract():
-    """Locate the Tesseract binary without relying on PATH — a freshly
-    winget-installed exe often isn't on PATH until the shell/session
-    restarts, so check the common install locations directly too."""
+    # A freshly winget-installed exe often isn't on PATH until the
+    # shell/session restarts, so check the common install locations too.
     found = shutil.which("tesseract")
     if found:
         return found
@@ -70,15 +66,10 @@ OCR_AVAILABLE = pytesseract is not None and _TESSERACT_PATH is not None
 
 
 class ScreenUnderstanding:
-    """On-demand screen perception: windows, on-screen text, and rough UI regions."""
-
     def __init__(self):
         self.last_result = None
 
-    # --- Window / active-app / multi-window understanding ------------------
-
     def list_windows(self):
-        """Every visible top-level window: title and screen bounds."""
         windows = []
         for w in gw.getAllWindows():
             if not w.title.strip() or w.width <= 0 or w.height <= 0 or not w.visible:
@@ -92,27 +83,18 @@ class ScreenUnderstanding:
         return windows
 
     def get_active_window(self):
-        """The currently focused window, or None if it can't be determined."""
         w = gw.getActiveWindow()
         if w is None or not w.title.strip():
             return None
         return {"title": w.title, "left": w.left, "top": w.top, "width": w.width, "height": w.height}
 
-    # --- Screen capture ------------------------------------------------------
-
     def capture(self, region=None):
-        """BGR numpy image of the full screen, or a (left, top, width, height) region."""
         shot = pyautogui.screenshot(region=region) if region else pyautogui.screenshot()
         return cv2.cvtColor(np.array(shot), cv2.COLOR_RGB2BGR)
 
-    # --- OCR / text extraction ------------------------------------------------
-
     def extract_text(self, image):
-        """Word-level OCR results: text + bounding box + confidence.
-
-        Returns [] (not an error) when Tesseract isn't installed, so callers
-        degrade gracefully instead of crashing.
-        """
+        # Returns [] (not an error) when Tesseract isn't installed, so
+        # callers degrade gracefully instead of crashing.
         if not OCR_AVAILABLE:
             return []
         rgb = cv2.cvtColor(image, cv2.COLOR_BGR2RGB)
@@ -133,14 +115,8 @@ class ScreenUnderstanding:
         return words
 
     def locate_text(self, query, words=None):
-        """Resolve a text label to on-screen click coordinates.
-
-        The context-aware-interaction primitive: instead of a gesture always
-        mapping to a fixed coordinate, a caller can ask "where is 'Save' on
-        screen right now" and get back live coordinates to act on. `words`
-        can be passed in (e.g. reused from a prior extract_text() call);
-        otherwise this captures and OCRs the screen itself.
-        """
+        # `words` can be passed in (e.g. reused from a prior extract_text()
+        # call); otherwise this captures and OCRs the screen itself.
         if words is None:
             words = self.extract_text(self.capture())
         query = query.strip().lower()
@@ -154,16 +130,10 @@ class ScreenUnderstanding:
                 })
         return matches
 
-    # --- UI element / button / icon region detection (heuristic) -----------
-
     def detect_ui_regions(self, image):
-        """Rough rectangular UI regions via edge/contour geometry.
-
-        Not a trained classifier: filters OpenCV contours by size and aspect
-        ratio into "button"-shaped (wide, short, text-sized) vs "icon"-shaped
-        (small, near-square) buckets. Good enough to say "there are roughly
-        N clickable-looking things here", not to say what any one of them is.
-        """
+        # Not a trained classifier: filters OpenCV contours by size and
+        # aspect ratio into "button"-shaped (wide, short, text-sized) vs
+        # "icon"-shaped (small, near-square) buckets.
         gray = cv2.cvtColor(image, cv2.COLOR_BGR2GRAY)
         edges = cv2.Canny(gray, 50, 150)
         edges = cv2.dilate(edges, np.ones((3, 3), np.uint8), iterations=1)
@@ -183,11 +153,7 @@ class ScreenUnderstanding:
                 buttons.append(region)
         return {"buttons": buttons[:40], "icons": icons[:40]}
 
-    # --- Menu recognition (heuristic) ----------------------------------------
-
     def detect_menu_items(self, words, window):
-        """Candidate menu-bar items: short OCR words in a single row near the
-        top of the given window. Heuristic, not a real menu-tree read."""
         if not window:
             return []
         band_top = window["top"]
@@ -197,17 +163,9 @@ class ScreenUnderstanding:
         row.sort(key=lambda w: w["left"])
         return row
 
-    # --- Screen summarization ⭐ ------------------------------------------
-
     def summarize(self, max_text_items=12):
-        """One on-demand pass: capture, OCR, window state -> a text summary.
-
-        Ties every capability above together into the accessibility-facing
-        headline feature — a plain-language description of what's currently
-        on screen, suitable for reading aloud to a user who can't easily
-        read the screen themselves (no TTS engine is wired up yet; this
-        returns text for a caller to speak/display).
-        """
+        # No TTS engine is wired up here; this returns text for a caller to
+        # speak/display.
         started = time.time()
         active = self.get_active_window()
         windows = self.list_windows()

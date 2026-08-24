@@ -23,5 +23,10 @@ htmlcov/
 .DS_Store
 Thumbs.db
 
-# Secrets — Jarvis's ANTHROPIC_API_KEY (see .env.example)
+# Secrets — the backend's own secrets (.env, see .env.example)
 .env
+
+# Node backend
+node_modules/
+certs/
+data/
